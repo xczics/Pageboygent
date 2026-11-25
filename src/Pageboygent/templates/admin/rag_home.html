@@ -1,0 +1,1652 @@
+{% extends 'admin/master.html' %}
+
+{% block body %}
+<div class="container-fluid page-home-wrap {% if active_tab in ('chat', 'lit') %}chat-active{% endif %}">
+    <ul class="nav nav-tabs home-tabs" role="tablist">
+        <li role="presentation" class="{% if active_tab == 'chat' %}active{% endif %}">
+            <a href="{{ url_for('admin.index', tab='chat') }}">AI 对话</a>
+        </li>
+        <li role="presentation" class="{% if active_tab == 'rag' %}active{% endif %}">
+            <a href="{{ url_for('admin.index', tab='rag') }}">RAG 搜索</a>
+        </li>
+        <li role="presentation" class="{% if active_tab == 'lit' %}active{% endif %}">
+            <a href="{{ url_for('admin.index', tab='lit') }}">AI 文献检索</a>
+        </li>
+    </ul>
+
+    {% if active_tab == 'lit' %}
+    <div class="lit-shell" id="lit-root" data-session-id="{{ lit_session_id }}">
+        <aside class="chat-col lit-sessions-col">
+            <div class="col-title-row">
+                <strong>检索会话</strong>
+                <a class="btn btn-default btn-xs" href="{{ url_for('admin.index', tab='lit', lit_new='1') }}">新建</a>
+            </div>
+            <div class="session-list" id="lit-session-list"></div>
+        </aside>
+
+        <section class="chat-col lit-main-col">
+            <div class="col-title-row">
+                <strong>AI 文献检索</strong>
+                <span class="session-hash">结论仅基于库内原文、AI 总结与检索结果；书目信息与片段由系统从数据库直接展示</span>
+            </div>
+            <div id="lit-error-wrap"></div>
+            <div class="dialog-log" id="lit-log">
+                <div class="empty-tip">用自然语言描述你要找的文献，例如：“库里有哪些用 Zn 同位素约束月球挥发分丢失机制的研究？各自结论是什么？”。
+                    AI 会自行组合 AI 总结检索、原文 BM25、关键词与语义检索，判断结果是否充分并扩展检索，最后给出总体判断、候选文献和关键片段。</div>
+            </div>
+            <form class="composer" id="lit-form">
+                <textarea name="question" class="form-control" placeholder="描述你要检索的文献，可以继续追问上一轮的结果..."></textarea>
+                <div class="composer-footer">
+                    <label class="checkbox-inline">
+                        <input type="checkbox" name="use_pro"> 使用 Pro 模型
+                    </label>
+                    <span class="chat-running-tag" id="lit-running-tag" style="display:none;">AI 正在检索...</span>
+                    <button type="submit" class="btn btn-primary" id="lit-send-btn">检索</button>
+                </div>
+            </form>
+        </section>
+
+        <aside class="chat-col lit-usage-col">
+            <div class="col-title-row">
+                <strong>Token 仪表</strong>
+                <span class="session-hash">按高峰时段费率预估</span>
+            </div>
+            <div class="lit-usage-panel tok-root" id="lit-usage-panel">
+                <div class="empty-tip">开始检索后，这里会实时显示 token 消耗与预估费用。</div>
+            </div>
+        </aside>
+    </div>
+    {% endif %}
+
+    {% if active_tab == 'chat' %}
+    <div class="lit-shell" id="chat-root" data-session-id="{{ chat_session_id }}">
+        <aside class="chat-col lit-sessions-col">
+            <div class="col-title-row">
+                <strong>对话列表</strong>
+                <a class="btn btn-default btn-xs" href="{{ url_for('admin.index', tab='chat', chat_new='1') }}">新建</a>
+            </div>
+            <div class="session-list" id="chat-session-list"></div>
+        </aside>
+
+        <section class="chat-col lit-main-col">
+            <div class="col-title-row">
+                <strong>AI 对话</strong>
+                <span class="session-hash">涉及文献的内容会先检索文献库并引用原文；引用的文献与片段由系统从数据库直接展示</span>
+            </div>
+            <div id="chat-error-wrap"></div>
+            <div class="dialog-log" id="chat-log">
+                <div class="empty-tip">像和研究助理聊天一样提问，例如：“BSE 的 Rb 同位素组成比球粒陨石轻还是重？依据是什么？”。
+                    涉及具体研究时，AI 会自行检索文献库、回原文核实，并在回答中引用证据；寒暄、润色、翻译等则直接回答。可以连续追问。</div>
+            </div>
+            <form class="composer" id="chat-form">
+                <textarea name="question" class="form-control" placeholder="输入你的问题，Ctrl/⌘ + Enter 发送..."></textarea>
+                <div class="composer-footer">
+                    <label class="checkbox-inline">
+                        <input type="checkbox" name="use_pro"> 使用 Pro 模型
+                    </label>
+                    <span class="chat-running-tag" id="chat-running-tag" style="display:none;">AI 正在思考...</span>
+                    <button type="submit" class="btn btn-primary" id="chat-send-btn">发送</button>
+                </div>
+            </form>
+        </section>
+
+        <aside class="chat-col lit-usage-col">
+            <div class="col-title-row">
+                <strong>Token 仪表</strong>
+                <span class="session-hash">按高峰时段费率预估</span>
+            </div>
+            <div class="lit-usage-panel tok-root" id="chat-usage-panel">
+                <div class="empty-tip">开始对话后，这里会实时显示 token 消耗与预估费用。</div>
+            </div>
+        </aside>
+    </div>
+    {% endif %}
+
+    {% if active_tab == 'rag' %}
+    <div class="card rag-panel">
+        <div class="card-header">
+            <strong>RAG 搜索</strong>
+        </div>
+        <div class="card-body">
+            <form method="get" action="{{ url_for('admin.index') }}" class="form-inline rag-form">
+                <input type="hidden" name="tab" value="rag">
+                <textarea name="q" class="form-control" placeholder="输入问题或检索关键词...">{{ query }}</textarea>
+                <input type="number" min="1" max="50" name="top_k" value="{{ top_k }}" class="form-control rag-topk">
+                <button type="submit" class="btn btn-primary">开始检索</button>
+            </form>
+            <div class="rag-hint">默认返回前 {{ top_k }} 条结果，可在上方调整。</div>
+
+            {% if error %}
+            <div class="alert alert-danger" style="margin-top: 10px;">{{ error }}</div>
+            {% endif %}
+
+            {% if searched and not results and not error %}
+            <div class="alert alert-info" style="margin-top: 10px;">未检索到结果，请尝试更具体的关键词。</div>
+            {% endif %}
+
+            {% if results %}
+            <div class="rag-result-list">
+                {% for item in results %}
+                <article class="rag-result-item">
+                    <div class="rag-meta">
+                        <span class="score-tag">score: {{ '%.4f'|format(item.score if item.score is not none else 0.0)
+                            }}</span>
+                        <span>paper_id: {{ item.paper_id }}</span>
+                        <span>md_key: {{ item.md_key }}</span>
+                        <span>line: {{ item.line_number }}</span>
+                    </div>
+                    {% if item.bib_full_info %}
+                    <div class="bib-info no-mathjax">{{ item.bib_full_info }}</div>
+                    {% endif %}
+                    <div class="snippet">{{ item.rendered_text }}</div>
+                </article>
+                {% endfor %}
+            </div>
+            {% endif %}
+        </div>
+    </div>
+    {% endif %}
+</div>
+{% endblock %}
+
+{% block tail %}
+{{ super() }}
+<style>
+    .page-home-wrap {
+        box-sizing: border-box;
+        width: 100vw;
+        max-width: 100vw;
+        margin-top: 10px;
+        margin-left: calc(50% - 50vw);
+        margin-right: calc(50% - 50vw);
+        padding-left: 10px;
+        padding-right: 10px;
+    }
+
+    .home-tabs {
+        margin-bottom: 10px;
+    }
+
+    .chat-shell {
+        display: grid;
+        grid-template-columns: 260px minmax(420px, 1fr) 360px;
+        gap: 10px;
+        height: calc(100vh - 170px);
+        min-height: 560px;
+        overflow: hidden;
+    }
+
+    .page-home-wrap.chat-active {
+        height: calc(100vh - 76px);
+        overflow: hidden;
+    }
+
+    .chat-col {
+        border: 1px solid #d1d5db;
+        border-radius: 12px;
+        background: #ffffff;
+        display: flex;
+        flex-direction: column;
+        min-height: 0;
+    }
+
+    .dialog-col {
+        overflow: hidden;
+    }
+
+    .col-title-row {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        padding: 10px 12px;
+        border-bottom: 1px solid #e5e7eb;
+        background: #f8fafc;
+        border-top-left-radius: 12px;
+        border-top-right-radius: 12px;
+    }
+
+    .session-hash {
+        color: #6b7280;
+        font-size: 12px;
+    }
+
+    .session-list {
+        overflow: auto;
+        padding: 6px;
+    }
+
+    .session-item {
+        display: block;
+        border: 1px solid #e5e7eb;
+        border-radius: 10px;
+        padding: 8px;
+        margin-bottom: 6px;
+        color: #374151;
+        text-decoration: none;
+        background: #ffffff;
+    }
+
+    .session-item:hover {
+        border-color: #93c5fd;
+        background: #eff6ff;
+        text-decoration: none;
+    }
+
+    .session-item.active {
+        border-color: #60a5fa;
+        background: #dbeafe;
+    }
+
+    .session-title {
+        font-size: 13px;
+        font-weight: 600;
+        color: #111827;
+    }
+
+    .session-meta {
+        margin-top: 4px;
+        font-size: 12px;
+        color: #6b7280;
+    }
+
+    .dialog-log {
+        flex: 1;
+        overflow: auto;
+        min-height: 0;
+        padding: 12px;
+        background: linear-gradient(180deg, #ffffff 0%, #f9fafb 100%);
+    }
+
+    .bubble {
+        max-width: 90%;
+        border-radius: 12px;
+        border: 1px solid #d1d5db;
+        padding: 8px 10px;
+        margin-bottom: 8px;
+        box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04);
+    }
+
+    .bubble.user {
+        margin-left: auto;
+        background: #eff6ff;
+        border-color: #bfdbfe;
+    }
+
+    .bubble.assistant {
+        margin-right: auto;
+        background: #ffffff;
+    }
+
+    .bubble-role {
+        font-size: 11px;
+        font-weight: 700;
+        color: #6b7280;
+        margin-bottom: 5px;
+    }
+
+    .composer {
+        border-top: 1px solid #e5e7eb;
+        padding: 10px;
+        background: #ffffff;
+        flex-shrink: 0;
+    }
+
+    .composer textarea {
+        min-height: 86px;
+        resize: vertical;
+    }
+
+    .composer-footer {
+        margin-top: 8px;
+        display: flex;
+        align-items: center;
+        gap: 10px;
+    }
+
+    .composer-footer .btn {
+        margin-left: auto;
+    }
+
+    .chat-running-tag {
+        color: #0f766e;
+        font-size: 12px;
+        font-weight: 700;
+    }
+
+    .overview-grid {
+        display: grid;
+        grid-template-columns: 1fr;
+        gap: 8px;
+        padding: 10px;
+    }
+
+    .overview-item {
+        border: 1px solid #e2e8f0;
+        border-radius: 8px;
+        padding: 8px;
+        background: #f8fafc;
+    }
+
+    .overview-item .label {
+        color: #64748b;
+        font-size: 12px;
+    }
+
+    .overview-item .value {
+        font-size: 22px;
+        line-height: 1.2;
+        color: #0f172a;
+        font-weight: 700;
+    }
+
+    .ref-list-wrap {
+        border-top: 1px solid #e5e7eb;
+        padding: 10px;
+        overflow: auto;
+        min-height: 0;
+    }
+
+    .sub-title {
+        font-size: 13px;
+        font-weight: 700;
+        color: #334155;
+        margin-bottom: 8px;
+    }
+
+    .ref-item {
+        border: 1px solid #e2e8f0;
+        border-radius: 10px;
+        padding: 8px;
+        background: #ffffff;
+        margin-bottom: 8px;
+    }
+
+    .ref-item-tabs {
+        margin-bottom: 8px;
+        border-bottom: 1px solid #e5e7eb;
+    }
+
+    .ref-item-tabs>li>a {
+        padding: 4px 8px;
+        font-size: 12px;
+    }
+
+    .ref-item-tab-content {
+        min-height: 0;
+    }
+
+    .ref-item-preview {
+        max-height: 120px;
+        overflow: hidden;
+        position: relative;
+    }
+
+    .ref-item-preview::after {
+        content: "";
+        position: absolute;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        height: 34px;
+        background: linear-gradient(to bottom, rgba(255, 255, 255, 0), #ffffff 70%);
+        pointer-events: none;
+    }
+
+    .ref-item-full {
+        max-height: 320px;
+        overflow: auto;
+    }
+
+    .empty-tip {
+        color: #6b7280;
+        font-size: 13px;
+    }
+
+    .rag-panel {
+        border-radius: 12px;
+        border: 1px solid #d1d5db;
+    }
+
+    .rag-panel .card-header {
+        background: #f8fafc;
+    }
+
+    .rag-form {
+        display: flex;
+        gap: 10px;
+        flex-wrap: wrap;
+        align-items: stretch;
+    }
+
+    .rag-form textarea {
+        flex: 1;
+        min-height: 78px;
+        min-width: 260px;
+        resize: vertical;
+    }
+
+    .rag-topk {
+        width: 120px;
+    }
+
+    .rag-hint {
+        margin-top: 8px;
+        color: #6b7280;
+        font-size: 13px;
+    }
+
+    .rag-result-list {
+        margin-top: 14px;
+        display: grid;
+        gap: 10px;
+    }
+
+    .rag-result-item {
+        border: 1px solid #d1d5db;
+        border-radius: 10px;
+        padding: 10px;
+        background: #fff;
+    }
+
+    .rag-meta {
+        font-size: 12px;
+        color: #6b7280;
+        display: flex;
+        flex-wrap: wrap;
+        gap: 10px;
+        margin-bottom: 8px;
+    }
+
+    .score-tag {
+        display: inline-block;
+        padding: 2px 8px;
+        border-radius: 999px;
+        background: #ccfbf1;
+        color: #115e59;
+        font-weight: 700;
+    }
+
+    .snippet {
+        word-break: break-word;
+        line-height: 1.55;
+    }
+
+    .bib-info {
+        margin-bottom: 8px;
+        padding: 7px 9px;
+        border-radius: 8px;
+        border: 1px solid #e2e8f0;
+        background: #f8fafc;
+        color: #334155;
+        font-size: 12px;
+        line-height: 1.45;
+        white-space: pre-wrap;
+        word-break: break-word;
+    }
+
+    .snippet p {
+        margin: 0.35rem 0;
+    }
+
+    .snippet pre {
+        margin: 0.5rem 0;
+        padding: 0.6rem 0.8rem;
+        border-radius: 8px;
+        background: #f8fafc;
+        overflow-x: auto;
+        border: 1px solid #e2e8f0;
+    }
+
+    .snippet code {
+        font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+        font-size: 0.92em;
+    }
+
+    .snippet ul,
+    .snippet ol {
+        margin: 0.35rem 0 0.35rem 1.2rem;
+        padding: 0;
+    }
+
+    .lit-shell {
+        display: grid;
+        grid-template-columns: 240px minmax(460px, 1fr) 300px;
+        gap: 10px;
+        height: calc(100vh - 170px);
+        min-height: 560px;
+        overflow: hidden;
+    }
+
+    /* ---- Token 仪表（右栏） ---- */
+    .tok-root {
+        --tok-surface: #ffffff;
+        --tok-text-primary: #0b0b0b;
+        --tok-text-secondary: #52514e;
+        --tok-text-muted: #8a8984;
+        --tok-hit: #2a78d6;      /* 缓存命中输入：categorical slot 1 */
+        --tok-miss: #eb6834;     /* 未命中输入：slot 2 */
+        --tok-out: #1baf7a;      /* 输出：slot 3（对比度 < 3:1，每行都有可见文字标签） */
+        --tok-track: #d6e6f8;    /* 命中率仪表的底轨：同色系浅阶 */
+    }
+
+    .lit-usage-panel {
+        overflow: auto;
+        padding: 10px 12px;
+        min-height: 0;
+        position: relative;
+    }
+
+    .tok-scope {
+        border-bottom: 1px solid #e5e7eb;
+        padding-bottom: 12px;
+        margin-bottom: 12px;
+    }
+
+    .tok-scope:last-of-type {
+        border-bottom: none;
+    }
+
+    .tok-scope-title {
+        font-size: 12px;
+        font-weight: 700;
+        color: var(--tok-text-secondary);
+        display: flex;
+        justify-content: space-between;
+        gap: 6px;
+    }
+
+    .tok-scope-sub {
+        font-size: 11px;
+        color: var(--tok-text-muted);
+        margin-top: 2px;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+    }
+
+    .tok-hero {
+        font-size: 48px;
+        line-height: 1.05;
+        font-weight: 700;
+        color: var(--tok-text-primary);
+        margin: 6px 0 2px 0;
+        letter-spacing: -0.5px;
+    }
+
+    .tok-stat {
+        font-size: 26px;
+        line-height: 1.1;
+        font-weight: 700;
+        color: var(--tok-text-primary);
+        margin: 6px 0 2px 0;
+    }
+
+    .tok-total-line {
+        font-size: 12px;
+        color: var(--tok-text-secondary);
+    }
+
+    .tok-bar {
+        display: flex;
+        gap: 2px;
+        height: 28px;
+        margin: 10px 0 6px 0;
+        background: var(--tok-surface);
+    }
+
+    .tok-bar.thin {
+        height: 8px;
+    }
+
+    .tok-seg {
+        border-radius: 4px;
+        min-width: 0;
+        color: #ffffff;
+        font-size: 11px;
+        font-weight: 600;
+        line-height: 28px;
+        padding-left: 5px;
+        overflow: hidden;
+        white-space: nowrap;
+        cursor: default;
+    }
+
+    .tok-bar.thin .tok-seg {
+        border-radius: 999px;
+        padding: 0;
+    }
+
+    .tok-seg.hit { background: var(--tok-hit); }
+    .tok-seg.miss { background: var(--tok-miss); }
+    .tok-seg.out { background: var(--tok-out); color: #0b0b0b; }
+
+    .tok-table {
+        width: 100%;
+        font-size: 12px;
+        border-collapse: collapse;
+        font-variant-numeric: tabular-nums;
+    }
+
+    .tok-table td {
+        padding: 2px 0;
+        color: var(--tok-text-primary);
+    }
+
+    .tok-table td.num {
+        text-align: right;
+        padding-left: 8px;
+        white-space: nowrap;
+    }
+
+    .tok-table td.muted,
+    .tok-table th {
+        color: var(--tok-text-muted);
+        font-weight: 400;
+        font-size: 11px;
+    }
+
+    .tok-table th.num {
+        text-align: right;
+    }
+
+    .tok-table tr.total td {
+        border-top: 1px solid #e5e7eb;
+        font-weight: 700;
+        padding-top: 4px;
+    }
+
+    .tok-swatch {
+        display: inline-block;
+        width: 9px;
+        height: 9px;
+        border-radius: 2px;
+        margin-right: 6px;
+        vertical-align: middle;
+    }
+
+    .tok-meter-label {
+        display: flex;
+        justify-content: space-between;
+        font-size: 11px;
+        color: var(--tok-text-secondary);
+        margin-top: 8px;
+    }
+
+    .tok-meter {
+        height: 8px;
+        border-radius: 999px;
+        background: var(--tok-track);
+        overflow: hidden;
+        margin-top: 3px;
+    }
+
+    .tok-meter > div {
+        height: 100%;
+        border-radius: 999px;
+        background: var(--tok-hit);
+    }
+
+    .tok-rates {
+        font-size: 11px;
+        color: var(--tok-text-muted);
+        line-height: 1.5;
+    }
+
+    .tok-tooltip {
+        position: fixed;
+        z-index: 1000;
+        pointer-events: none;
+        background: #0b0b0b;
+        color: #ffffff;
+        font-size: 11px;
+        line-height: 1.45;
+        padding: 5px 8px;
+        border-radius: 6px;
+        box-shadow: 0 4px 14px rgba(0, 0, 0, 0.18);
+        display: none;
+        white-space: nowrap;
+    }
+
+    .tok-running-dot {
+        display: inline-block;
+        width: 7px;
+        height: 7px;
+        border-radius: 50%;
+        background: #0f766e;
+        margin-right: 4px;
+        animation: tok-pulse 1.2s ease-in-out infinite;
+    }
+
+    @keyframes tok-pulse {
+        0%, 100% { opacity: 1; }
+        50% { opacity: 0.25; }
+    }
+
+    .lit-main-col {
+        overflow: hidden;
+    }
+
+    .lit-turn {
+        margin-bottom: 18px;
+    }
+
+    .lit-question {
+        margin-left: auto;
+        max-width: 80%;
+        background: #eff6ff;
+        border: 1px solid #bfdbfe;
+        border-radius: 12px;
+        padding: 8px 10px;
+        margin-bottom: 8px;
+        white-space: pre-wrap;
+    }
+
+    .lit-card {
+        border: 1px solid #d1d5db;
+        border-radius: 12px;
+        background: #ffffff;
+        padding: 10px 12px;
+        margin-bottom: 8px;
+    }
+
+    .lit-card h4 {
+        font-size: 14px;
+        font-weight: 700;
+        margin: 0 0 6px 0;
+        color: #111827;
+    }
+
+    .lit-trace summary {
+        cursor: pointer;
+        font-size: 12px;
+        color: #475569;
+        font-weight: 600;
+    }
+
+    .lit-trace ol {
+        margin: 6px 0 0 0;
+        padding-left: 20px;
+        font-size: 12px;
+        color: #374151;
+    }
+
+    .lit-trace li {
+        margin-bottom: 3px;
+        white-space: pre-wrap;
+        word-break: break-word;
+    }
+
+    .lit-trace li.kind-thought { color: #6b7280; }
+    .lit-trace li.kind-tool { color: #0f766e; }
+    .lit-trace li.kind-system { color: #1d4ed8; }
+    .lit-trace li.kind-warn { color: #b45309; }
+
+    .lit-badge {
+        display: inline-block;
+        padding: 1px 8px;
+        border-radius: 999px;
+        font-size: 11px;
+        font-weight: 700;
+        margin-right: 4px;
+        vertical-align: middle;
+    }
+
+    .lit-rel-high { background: #dcfce7; color: #166534; }
+    .lit-rel-medium { background: #fef9c3; color: #854d0e; }
+    .lit-rel-low { background: #f1f5f9; color: #475569; }
+    .lit-kind-fulltext { background: #ccfbf1; color: #115e59; }
+    .lit-kind-summary, .lit-kind-theme, .lit-kind-note { background: #fef3c7; color: #92400e; }
+    .lit-kind-reference { background: #ede9fe; color: #5b21b6; }
+    .lit-evidence.kind-reference { border-left-color: #c4b5fd; }
+    .lit-ref-fields { font-size: 12px; margin: 4px 0; border-collapse: collapse; }
+    .lit-ref-fields th { color: #6b7280; font-weight: 600; padding: 1px 10px 1px 0; vertical-align: top; white-space: nowrap; }
+    .lit-ref-fields td { padding: 1px 0; word-break: break-word; }
+    .lit-ref-raw { font-size: 12px; color: #374151; background: #faf5ff; border: 1px dashed #ddd6fe;
+                   border-radius: 6px; padding: 5px 8px; margin: 4px 0; white-space: pre-wrap; word-break: break-word; }
+    .lit-flag { background: #fee2e2; color: #991b1b; }
+
+    .lit-paper {
+        border-top: 1px solid #e5e7eb;
+        padding: 10px 0 4px 0;
+    }
+
+    .lit-paper:first-of-type {
+        border-top: none;
+    }
+
+    .lit-paper-title {
+        font-weight: 700;
+        color: #111827;
+    }
+
+    .lit-paper-meta {
+        font-size: 12px;
+        color: #6b7280;
+        margin: 2px 0 6px 0;
+    }
+
+    .lit-paper-links a {
+        font-size: 12px;
+        margin-right: 10px;
+    }
+
+    .lit-evidence {
+        border-left: 3px solid #99f6e4;
+        background: #f8fafc;
+        border-radius: 6px;
+        padding: 6px 8px;
+        margin: 6px 0;
+        font-size: 13px;
+    }
+
+    .lit-evidence.kind-summary, .lit-evidence.kind-theme, .lit-evidence.kind-note {
+        border-left-color: #fcd34d;
+    }
+
+    .lit-evidence:target {
+        outline: 2px solid #60a5fa;
+    }
+
+    .lit-evidence-head {
+        font-size: 11px;
+        color: #6b7280;
+        margin-bottom: 3px;
+    }
+
+    .lit-evidence .snippet {
+        max-height: 220px;
+        overflow: auto;
+    }
+
+    .lit-cite {
+        display: inline-block;
+        font-size: 10px;
+        line-height: 1.3;
+        padding: 0 4px;
+        border-radius: 4px;
+        background: #e0f2fe;
+        color: #075985;
+        vertical-align: super;
+        text-decoration: none;
+        margin: 0 1px;
+    }
+
+    .lit-cite-bad {
+        background: #fee2e2;
+        color: #991b1b;
+    }
+
+    .lit-cite-paper {
+        font-weight: 600;
+    }
+
+    .lit-warnings {
+        font-size: 12px;
+        color: #92400e;
+        background: #fffbeb;
+        border: 1px solid #fde68a;
+        border-radius: 8px;
+        padding: 6px 8px;
+        margin-top: 6px;
+    }
+
+    .lit-stats {
+        font-size: 11px;
+        color: #9ca3af;
+        margin-top: 4px;
+    }
+
+    .lit-answer {
+        font-size: 15px;
+        line-height: 1.65;
+        color: #111827;
+    }
+
+    .lit-answer p {
+        margin: 0.2rem 0;
+    }
+
+    details.lit-fold {
+        margin-top: 8px;
+    }
+
+    details.lit-fold > summary {
+        cursor: pointer;
+        font-size: 13px;
+        font-weight: 600;
+        color: #2563eb;
+    }
+
+    details.lit-report > summary {
+        font-size: 13px;
+    }
+
+    details.lit-report[open] > .lit-report-body {
+        margin-top: 6px;
+        padding-top: 6px;
+        border-top: 1px dashed #e5e7eb;
+    }
+
+    details.lit-more > summary {
+        font-weight: 400;
+        font-size: 12px;
+    }
+
+    .lit-chat-answer {
+        max-width: 100%;
+    }
+
+    .lit-chat-refs {
+        margin: 6px 0 0 0;
+        padding-left: 20px;
+        font-size: 12px;
+        line-height: 1.55;
+    }
+
+    .lit-chat-refs li {
+        margin-bottom: 3px;
+    }
+
+    .lit-usage-total {
+        font-size: 11px;
+        font-weight: 400;
+        color: #6b7280;
+        margin-left: 6px;
+    }
+
+    .lit-usage {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 6px;
+        margin-top: 6px;
+    }
+
+    .lit-usage span {
+        font-size: 11px;
+        background: #f1f5f9;
+        color: #334155;
+        border-radius: 6px;
+        padding: 1px 7px;
+    }
+
+    .lit-trace summary .lit-chain {
+        font-weight: 400;
+        color: #6b7280;
+    }
+
+    .lit-trace .lit-latest {
+        display: block;
+        font-weight: 400;
+        color: #0f766e;
+        margin: 2px 0 0 14px;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+    }
+
+    details.lit-paper > summary {
+        cursor: pointer;
+        list-style: none;
+        display: flex;
+        align-items: center;
+        gap: 4px;
+        padding: 2px 0;
+    }
+
+    details.lit-paper > summary::-webkit-details-marker {
+        display: none;
+    }
+
+    details.lit-paper > summary::before {
+        content: '▸';
+        color: #9ca3af;
+        width: 12px;
+        flex-shrink: 0;
+    }
+
+    details.lit-paper[open] > summary::before {
+        content: '▾';
+    }
+
+    .lit-paper-brief {
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+        min-width: 0;
+    }
+
+    .lit-paper-brief .lit-cite-name {
+        font-weight: 700;
+        color: #111827;
+        margin-right: 6px;
+    }
+
+    .lit-paper-brief .lit-brief-title {
+        color: #4b5563;
+    }
+
+    .lit-paper-body {
+        padding-left: 16px;
+        margin-top: 4px;
+    }
+
+    .lit-expand-all {
+        font-size: 12px;
+        font-weight: 400;
+        margin-left: 8px;
+        cursor: pointer;
+    }
+
+    @media (max-width: 1400px) {
+        .chat-shell {
+            grid-template-columns: 220px minmax(360px, 1fr) 320px;
+        }
+    }
+
+    @media (max-width: 1150px) {
+        .page-home-wrap {
+            margin-left: 0;
+            margin-right: 0;
+            width: 100%;
+            max-width: 100%;
+            padding-left: 0;
+            padding-right: 0;
+        }
+
+        .page-home-wrap.chat-active {
+            height: auto;
+            overflow: visible;
+        }
+
+        .chat-shell {
+            grid-template-columns: 1fr;
+            height: auto;
+            min-height: auto;
+            overflow: visible;
+        }
+
+        .chat-col {
+            min-height: 320px;
+        }
+
+        .lit-shell {
+            grid-template-columns: 1fr;
+            height: auto;
+            overflow: visible;
+        }
+    }
+</style>
+<script>
+    window.MathJax = {
+        tex: {
+            inlineMath: [['$', '$'], ['\\(', '\\)']],
+            displayMath: [['$$', '$$'], ['\\[', '\\]']],
+            processEscapes: true,
+        },
+        options: {
+            processHtmlClass: 'snippet',
+            ignoreHtmlClass: 'no-mathjax',
+        },
+    };
+</script>
+<script defer src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-chtml.js"></script>
+<script>
+    // 文献检索与 AI 对话共用的视图引擎：会话列表、轮询、工具链、Token 仪表、折叠与引用跳转
+    function pbAgentView(cfg) {
+        const root = document.getElementById(cfg.prefix + '-root');
+        if (!root) {
+            return;
+        }
+        const form = document.getElementById(cfg.prefix + '-form');
+        const logNode = document.getElementById(cfg.prefix + '-log');
+        const errorWrap = document.getElementById(cfg.prefix + '-error-wrap');
+        const sessionList = document.getElementById(cfg.prefix + '-session-list');
+        const runningTag = document.getElementById(cfg.prefix + '-running-tag');
+        const sendBtn = document.getElementById(cfg.prefix + '-send-btn');
+        const questionInput = form.querySelector('textarea[name="question"]');
+        const useProInput = form.querySelector('input[name="use_pro"]');
+        const emptyTipHtml = logNode.innerHTML;
+        const indexUrl = '{{ url_for("admin.index") }}';
+
+        let sessionId = root.dataset.sessionId || '';
+        let lastSignature = null;
+        let pollTimer = null;
+        const openTraces = new Set();
+        const openPapers = new Set();
+
+        function esc(value) {
+            return String(value == null ? '' : value)
+                .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+                .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+        }
+
+        function safeHref(url, allowed) {
+            if (!url) { return ''; }
+            return allowed.some((prefix) => String(url).startsWith(prefix)) ? esc(url) : '';
+        }
+
+        function renderError(message) {
+            errorWrap.innerHTML = message
+                ? '<div class="alert alert-danger" style="margin: 8px 10px 0 10px;">' + esc(message) + '</div>'
+                : '';
+        }
+
+        function renderSessions(sessions) {
+            sessionList.innerHTML = (sessions || []).map((s) => {
+                const active = s.id === sessionId ? ' active' : '';
+                const href = indexUrl + '?tab=' + cfg.tab + '&' + cfg.tab + '_session=' + encodeURIComponent(s.id);
+                return '<a class="session-item' + active + '" href="' + href + '">' +
+                    '<div class="session-title">' + esc(s.title) + '</div>' +
+                    '<div class="session-meta">' + esc(s.updated_at) + ' · ' + Number(s.turn_count || 0) + ' 轮</div></a>';
+            }).join('') || '<div class="empty-tip" style="padding:6px;">' + cfg.labels.noSessions + '</div>';
+        }
+
+        const TRACE_ICONS = { thought: '💭', tool: '🔍', system: 'ℹ️', warn: '⚠️' };
+
+        function fmtTokens(n) {
+            n = Number(n || 0);
+            return n >= 10000 ? (n / 1000).toFixed(1) + 'k' : String(n);
+        }
+
+        function renderUsage(usage) {
+            if (!usage || !usage.llm_calls) { return ''; }
+            const hit = Number(usage.cache_hit_tokens || 0);
+            const prompt = Number(usage.prompt_tokens || 0);
+            const hitRate = prompt ? Math.round(hit / prompt * 100) : 0;
+            return '<div class="lit-usage" title="本轮检索的 LLM token 消耗（累计）">' +
+                '<span>🪙 总计 ' + fmtTokens(usage.total_tokens) + ' tokens</span>' +
+                '<span>输入 ' + fmtTokens(prompt) + '（缓存命中 ' + fmtTokens(hit) + ' · ' + hitRate + '%）</span>' +
+                '<span>输出 ' + fmtTokens(usage.completion_tokens) + '</span>' +
+                '<span>LLM 调用 ' + Number(usage.llm_calls) + ' 次</span></div>';
+        }
+
+        // ---------------- Token 仪表 ----------------
+        const TOK_PARTS = [
+            { key: 'input_cache_hit', cls: 'hit', color: 'var(--tok-hit)', label: '输入 · 缓存命中' },
+            { key: 'input_cache_miss', cls: 'miss', color: 'var(--tok-miss)', label: '输入 · 缓存未命中' },
+            { key: 'output', cls: 'out', color: 'var(--tok-out)', label: '输出' },
+        ];
+        const usagePanel = document.getElementById(cfg.prefix + '-usage-panel');
+        let tokTooltip = null;
+
+        function fmtInt(n) {
+            return Number(n || 0).toLocaleString('en-US');
+        }
+
+        function fmtYuan(v, big) {
+            if (v == null) { return '—'; }
+            v = Number(v);
+            if (v === 0) { return '¥0'; }
+            if (v < 0.01) { return big ? '<¥0.01' : '¥' + v.toFixed(4); }
+            return '¥' + v.toFixed(v < 1 ? 3 : 2);
+        }
+
+        function renderTokBar(scope, tall) {
+            const total = TOK_PARTS.reduce((sum, p) => sum + Number(scope.tokens[p.key] || 0), 0);
+            if (!total) { return '<div class="tok-bar' + (tall ? '' : ' thin') + '"></div>'; }
+            const segs = TOK_PARTS.filter((p) => scope.tokens[p.key] > 0).map((p) => {
+                const value = Number(scope.tokens[p.key]);
+                const share = value / total;
+                const cost = scope.cost ? scope.cost[p.key] : null;
+                // 块足够宽才在块内印百分比，否则只靠下方表格与悬停提示
+                const label = tall && share >= 0.16 ? Math.round(share * 100) + '%' : '';
+                const tip = p.label + '：' + fmtInt(value) + ' tokens（' + (share * 100).toFixed(1) + '%）' +
+                    (cost != null ? '<br>预估 ' + fmtYuan(cost) : '');
+                return '<div class="tok-seg ' + p.cls + '" style="flex:' + value + ' 1 0;" data-tip="' + esc(tip) + '">' + label + '</div>';
+            }).join('');
+            return '<div class="tok-bar' + (tall ? '' : ' thin') + '" role="img" aria-label="token 构成">' + segs + '</div>';
+        }
+
+        function renderTokTable(scope) {
+            const rows = TOK_PARTS.map((p) => '<tr><td><span class="tok-swatch" style="background:' + p.color + '"></span>' + p.label + '</td>' +
+                '<td class="num">' + fmtInt(scope.tokens[p.key]) + '</td>' +
+                '<td class="num">' + (scope.cost ? fmtYuan(scope.cost[p.key]) : '—') + '</td></tr>').join('');
+            return '<table class="tok-table"><tr><th></th><th class="num">tokens</th><th class="num">预估</th></tr>' + rows +
+                '<tr class="total"><td>合计</td><td class="num">' + fmtInt(scope.total_tokens) + '</td><td class="num">' +
+                (scope.cost ? fmtYuan(scope.cost.total) : '—') + '</td></tr></table>';
+        }
+
+        function renderHitMeter(scope) {
+            const input = Number(scope.tokens.input_cache_hit || 0) + Number(scope.tokens.input_cache_miss || 0);
+            if (!input) { return ''; }
+            const rate = Number(scope.tokens.input_cache_hit || 0) / input;
+            const miss = Number(scope.tokens.input_cache_miss || 0);
+            const lost = Number(scope.lost_cache_tokens || 0);
+            // 未命中 = 新增内容（本轮新返回的检索结果、模型输出，第一次出现，不可能命中）+ 本可命中却丢失的部分
+            const note = '<div class="tok-total-line" style="font-size:11px;margin-top:3px;" title="智能体每一步都会追加新的检索结果，这部分第一次出现、必然未命中；只有“可避免”的部分说明缓存出了问题">' +
+                '未命中中：新增内容 ' + fmtInt(Math.max(0, miss - lost)) + ' · 可避免 ' +
+                (lost ? '<strong style="color:#b45309">' + fmtInt(lost) + '</strong>' : '0') + '</div>';
+            return '<div class="tok-meter-label"><span>输入缓存命中率</span><span>' + (rate * 100).toFixed(1) + '%</span></div>' +
+                '<div class="tok-meter" role="meter" aria-valuemin="0" aria-valuemax="100" aria-valuenow="' + Math.round(rate * 100) +
+                '" aria-label="输入缓存命中率"><div style="width:' + (rate * 100).toFixed(1) + '%"></div></div>' + note;
+        }
+
+        function renderUsagePanel(panel) {
+            if (!usagePanel || !panel) { return; }
+            const cur = panel.current;
+            const ses = panel.session;
+            if (!cur || !ses || !ses.llm_calls) {
+                usagePanel.innerHTML = '<div class="empty-tip">' + cfg.labels.usageEmpty + '</div>' + renderRates(panel);
+                return;
+            }
+            const running = cur.status === 'running';
+            const curCost = cur.cost ? cur.cost.total : null;
+            // 唯一的 hero 数字：当前对话预估费用
+            let html = '<section class="tok-scope">' +
+                '<div class="tok-scope-title"><span>当前对话</span><span>' + Number(ses.turn_count || 0) + ' 轮 · ' + fmtInt(ses.llm_calls) + ' 次 LLM 调用</span></div>' +
+                '<div class="tok-hero">' + fmtYuan(ses.cost ? ses.cost.total : null, true) + '</div>' +
+                '<div class="tok-total-line">' + fmtInt(ses.total_tokens) + ' tokens' +
+                (ses.unpriced_turns ? ' · ' + ses.unpriced_turns + ' 轮使用的模型未配置费率，未计入费用' : '') + '</div>' +
+                renderTokBar(ses, true) + renderTokTable(ses) + renderHitMeter(ses) + '</section>';
+            html += '<section class="tok-scope">' +
+                '<div class="tok-scope-title"><span>' + (running ? '<span class="tok-running-dot"></span>' + cfg.labels.current + '（进行中）' : cfg.labels.current + '（第 ' + cur.turn_index + ' 轮）') + '</span>' +
+                '<span>' + fmtInt(cur.llm_calls) + ' 次调用</span></div>' +
+                '<div class="tok-scope-sub" title="' + esc(cur.question) + '">' + esc(cur.question) + '</div>' +
+                '<div class="tok-stat">' + (cur.cost ? fmtYuan(curCost, true) : '<span style="font-size:14px;font-weight:400;">该模型未配置费率</span>') + '</div>' +
+                '<div class="tok-total-line">' + fmtInt(cur.total_tokens) + ' tokens · ' + esc(cur.model || '') + '</div>' +
+                renderTokBar(cur, false) + renderTokTable(cur) + renderHitMeter(cur) + '</section>';
+            usagePanel.innerHTML = html + renderRates(panel);
+        }
+
+        function renderRates(panel) {
+            const r = panel.rates;
+            const rateLine = (x) => '缓存命中 ' + x.input_cache_hit + ' · 未命中 ' + x.input_cache_miss + ' · 输出 ' + x.output;
+            return '<div class="tok-rates">费率（元 / 百万 tokens，高峰时段）：<br>' +
+                (r ? 'Flash：' + rateLine(r) : 'Flash：未配置') + '<br>' +
+                (panel.pro_rates ? 'Pro：' + rateLine(panel.pro_rates) : 'Pro：未配置（price_professional_*）') +
+                '<br>预估费用仅供参考，以账单为准。</div>';
+        }
+
+        if (usagePanel) {
+            tokTooltip = document.createElement('div');
+            tokTooltip.className = 'tok-tooltip';
+            document.body.appendChild(tokTooltip);
+            usagePanel.addEventListener('mousemove', (event) => {
+                const seg = event.target.closest('.tok-seg');
+                if (!seg) { tokTooltip.style.display = 'none'; return; }
+                tokTooltip.innerHTML = seg.dataset.tip || '';
+                tokTooltip.style.display = 'block';
+                const x = Math.min(event.clientX + 12, window.innerWidth - tokTooltip.offsetWidth - 8);
+                tokTooltip.style.left = x + 'px';
+                tokTooltip.style.top = (event.clientY + 14) + 'px';
+            });
+            usagePanel.addEventListener('mouseleave', () => { tokTooltip.style.display = 'none'; });
+        }
+
+        function toolChainSummary(steps) {
+            // 按工具类别统计调用次数，例如：检索 AI 总结 ×2 → 原文 BM25 ×3 → 回读原文 ×4
+            const order = [];
+            const counts = {};
+            steps.filter((s) => s.kind === 'tool').forEach((s) => {
+                const name = String(s.text).split(/[：（]/)[0];
+                if (!(name in counts)) { order.push(name); counts[name] = 0; }
+                counts[name] += 1;
+            });
+            return order.map((name) => esc(name) + ' ×' + counts[name]).join(' → ');
+        }
+
+        function renderTrace(turn) {
+            const steps = turn.trace || [];
+            const running = turn.status === 'running';
+            const open = openTraces.has(turn.id) ? ' open' : '';
+            const toolCount = steps.filter((s) => s.kind === 'tool').length;
+            const chain = toolChainSummary(steps);
+            const latest = running && steps.length ? steps[steps.length - 1] : null;
+            const items = steps.map((s) => '<li class="kind-' + esc(s.kind) + '">' + (TRACE_ICONS[s.kind] || '·') + ' ' + esc(s.text) + '</li>').join('');
+            return '<details class="lit-trace lit-card" data-turn="' + esc(turn.id) + '"' + open + '>' +
+                '<summary>工具链（' + toolCount + ' 次调用）' + (running ? ' · 进行中…' : '') +
+                (chain ? ' <span class="lit-chain">' + chain + '</span>' : '') +
+                (latest ? '<span class="lit-latest">' + (TRACE_ICONS[latest.kind] || '·') + ' ' + esc(latest.text) + '</span>' : '') +
+                '</summary>' +
+                '<ol>' + (items || '<li>正在启动…</li>') + '</ol>' + renderUsage(turn.usage) + '</details>';
+        }
+
+        function renderEvidence(turnId, ev, extraLabel) {
+            return '<div class="lit-evidence kind-' + esc(ev.kind) + '" id="lit-' + esc(turnId) + '-' + esc(ev.eid) + '">' +
+                '<div class="lit-evidence-head"><span class="lit-badge lit-kind-' + esc(ev.kind) + '">' + esc(ev.kind_label) + '</span>' +
+                '<strong>' + esc(ev.eid) + '</strong> · ' + esc(ev.label) +
+                (extraLabel ? ' · ' + esc(extraLabel) : '') +
+                (ev.methods && ev.methods.length ? ' · 命中方式：' + esc(ev.methods.join(', ')) : '') +
+                '</div><div class="snippet">' + (ev.text_html || '') + '</div></div>';
+        }
+
+        function renderCandidate(turnId, cand, index) {
+            const p = cand.paper || {};
+            const links = [];
+            const zSelect = safeHref(p.zotero_select_url, ['zotero://']);
+            const zPdf = safeHref(p.zotero_pdf_url, ['zotero://']);
+            const doi = safeHref(p.doi_url, ['https://doi.org/']);
+            if (zSelect) { links.push('<a href="' + zSelect + '">在 Zotero 中显示</a>'); }
+            if (zPdf) { links.push('<a href="' + zPdf + '">在 Zotero 中打开 PDF</a>'); }
+            if (doi) { links.push('<a href="' + doi + '" target="_blank" rel="noopener">DOI</a>'); }
+            const flags = [];
+            if (cand.summary_only) { flags.push('<span class="lit-badge lit-flag" title="支撑证据只来自 AI 总结/笔记，未经原文核实">仅总结支撑</span>'); }
+            if (cand.auto_evidence) { flags.push('<span class="lit-badge lit-flag" title="模型未给出有效证据，片段由系统按检索命中自动附上">证据为自动附加</span>'); }
+            const anchor = 'lit-' + turnId + '-P' + p.paper_id;
+            const title = String(p.title || '');
+            const briefTitle = title.length > 60 ? title.slice(0, 60) + '…' : title;
+            const open = openPapers.has(anchor) ? ' open' : '';
+            // 默认折叠：只显示 相关度 + Author (Year) + 部分标题；展开后显示完整信息、理由与关键片段
+            return '<details class="lit-paper" id="' + esc(anchor) + '"' + open + '>' +
+                '<summary title="' + esc(title) + '"><span class="lit-badge lit-rel-' + esc(cand.relevance) + '">' + esc(cand.relevance_label) + '</span>' +
+                '<span class="lit-paper-brief"><span class="lit-cite-name">' + (index + 1) + '. ' + esc(p.short_cite) + '</span>' +
+                '<span class="lit-brief-title">' + esc(briefTitle) + '</span></span></summary>' +
+                '<div class="lit-paper-body">' +
+                '<div>' + flags.join('') + '<span class="lit-paper-title">' + esc(title) + '</span></div>' +
+                '<div class="lit-paper-meta">' + esc(p.short_cite) + (p.doi ? ' · doi: ' + esc(p.doi) : '') + ' · P' + esc(p.paper_id) +
+                ' · Zotero key: ' + esc(p.zotero_key) + '</div>' +
+                '<div class="lit-paper-links">' + links.join('') + '</div>' +
+                '<div class="snippet" style="margin-top:4px;">' + (cand.reason_html || '') + '</div>' +
+                renderEvidenceList(turnId, cand.evidence || [], anchor) +
+                '</div></details>';
+        }
+
+        function renderEvidenceList(turnId, items, anchor) {
+            const head = items.slice(0, 2).map((ev) => renderEvidence(turnId, ev)).join('');
+            const tail = items.slice(2);
+            if (!tail.length) { return head; }
+            return head + rememberedDetails(anchor + '-ev', '更多片段（' + tail.length + '）',
+                tail.map((ev) => renderEvidence(turnId, ev)).join(''), 'lit-more');
+        }
+
+        function refBrief(ref) {
+            // 摘要行：Author (Year) + 部分标题；字段不全时退回参考文献原文开头
+            const f = ref.fields || {};
+            const firstAuthor = f.authors ? String(f.authors).split(/[,;&]| and /)[0].trim() : '';
+            const cite = firstAuthor ? firstAuthor + (f.authors.includes(',') || f.authors.includes('&') ? ' et al.' : '') + ' (' + (f.year || 'n.d.') + ')' : '';
+            const rawTitle = f.title || String(ref.raw || '').replace(/^\s*(\[\d+\]|\d+\.)\s*/, '');
+            const title = rawTitle.length > 60 ? rawTitle.slice(0, 60) + '…' : rawTitle;
+            return { cite: cite || (f.year ? '(' + f.year + ')' : ''), title: title };
+        }
+
+        function renderSecondary(turnId, ref, index) {
+            const f = ref.fields || {};
+            const anchor = 'lit-' + turnId + '-' + ref.ref_ids[0];
+            const open = openPapers.has(anchor) ? ' open' : '';
+            const brief = refBrief(ref);
+            const extraAnchors = ref.ref_ids.slice(1).map((rid) => '<span id="lit-' + esc(turnId) + '-' + esc(rid) + '"></span>').join('');
+            const rows = [];
+            const doi = safeHref(ref.doi_url, ['https://doi.org/']);
+            // 优先显示 DOI；其余字段只显示程序核实过（能在参考文献原文中找到）的部分
+            if (f.doi) { rows.push(['DOI', doi ? '<a href="' + doi + '" target="_blank" rel="noopener">' + esc(f.doi) + '</a>' : esc(f.doi)]); }
+            [['authors', '作者'], ['title', '标题'], ['year', '年份'], ['journal', '期刊']].forEach(([key, label]) => {
+                if (f[key]) { rows.push([label, esc(f[key])]); }
+            });
+            const citedBy = (ref.cited_by || []).map((c) => {
+                const z = safeHref(c.zotero_select_url, ['zotero://']);
+                const name = c.is_candidate
+                    ? '<a class="lit-cite-paper" href="#lit-' + esc(turnId) + '-P' + esc(c.paper_id) + '">' + esc(c.short_cite) + '</a>'
+                    : '<strong>' + esc(c.short_cite) + '</strong>';
+                return name + ' ' + esc(c.title) + (z ? ' · <a href="' + z + '">在 Zotero 中显示</a>' : '');
+            }).join('<br>');
+            const lib = ref.in_library;
+            const libNote = lib
+                ? '<div class="lit-warnings">该文献实际已在库中：' + esc(lib.short_cite) + ' ' + esc(lib.title) +
+                  (safeHref(lib.zotero_select_url, ['zotero://']) ? ' · <a href="' + safeHref(lib.zotero_select_url, ['zotero://']) + '">在 Zotero 中显示</a>' : '') + '</div>'
+                : '';
+            return '<details class="lit-paper" id="' + esc(anchor) + '"' + open + '>' + extraAnchors +
+                '<summary title="' + esc(ref.raw) + '"><span class="lit-badge lit-rel-' + esc(ref.relevance) + '">' + esc(ref.relevance_label) + '</span>' +
+                (lib ? '<span class="lit-badge lit-flag">已在库中</span>' : '') +
+                '<span class="lit-paper-brief"><span class="lit-cite-name">' + (index + 1) + '. ' + esc(brief.cite) + '</span>' +
+                '<span class="lit-brief-title">' + esc(brief.title) + '</span></span></summary>' +
+                '<div class="lit-paper-body">' + libNote +
+                (rows.length ? '<table class="lit-ref-fields">' + rows.map(([k, v]) => '<tr><th>' + k + '</th><td>' + v + '</td></tr>').join('') + '</table>' : '') +
+                '<div class="lit-evidence-head"><span class="lit-badge lit-kind-reference">参考文献原文</span>' + esc(ref.ref_ids.join(', ')) + '</div>' +
+                '<div class="lit-ref-raw no-mathjax">' + esc(ref.raw) + '</div>' +
+                '<div class="lit-paper-meta">被以下库内文献引用：<br>' + (citedBy || '—') + '</div>' +
+                '<div class="snippet" style="margin-top:4px;">' + (ref.reason_html || '') + '</div>' +
+                (ref.context_evidence || []).map((ev) => renderEvidence(turnId, ev, '引用处原文')).join('') +
+                '</div></details>';
+        }
+
+        function renderSecondaryCard(turnId, refs) {
+            if (!refs.length) { return ''; }
+            return '<div class="lit-card"><h4>二级文献（库中未收录，经库内文献引用 · ' + refs.length + '）' +
+                '<a class="lit-expand-all">全部展开/收起</a></h4>' +
+                '<div class="lit-paper-meta">书目信息逐字摘自引用它的库内文献的参考文献表，未在原文中出现的字段不予显示；相关性为库内文献的转述，并非来自该文献本身。</div>' +
+                refs.map((ref, i) => renderSecondary(turnId, ref, i)).join('') + '</div>';
+        }
+
+        function rememberedDetails(id, summaryHtml, bodyHtml, extraClass) {
+            // 默认折叠；用户展开过的在轮询重绘后保持展开
+            const open = openPapers.has(id) ? ' open' : '';
+            return '<details class="lit-fold ' + (extraClass || '') + '" id="' + esc(id) + '" data-remember="1"' + open + '>' +
+                '<summary>' + summaryHtml + '</summary>' + bodyHtml + '</details>';
+        }
+
+        function renderResult(turn) {
+            const r = turn.result;
+            if (!r) { return ''; }
+            const stats = r.stats || {};
+            const usage = turn.usage || stats.usage || {};
+
+            // 1) 先给简短直白的回答
+            let html = '<div class="lit-card lit-answer-card"><h4>回答 <span class="lit-badge lit-rel-' + esc(r.confidence) + '">把握：' +
+                esc(r.confidence_label) + '</span></h4>' +
+                '<div class="snippet lit-answer">' + (r.short_answer_html || '<span class="empty-tip">（无简短回答）</span>') + '</div>';
+            if (r.short_answer_derived) {
+                html += '<div class="lit-stats">（旧记录无简短回答，以上截取自详细报告开头）</div>';
+            }
+
+            // 2) 详细报告：内容完整保留，默认折叠
+            let report = '<div class="snippet lit-report-body">' + (r.judgement_html || '') + '</div>';
+            if (r.gaps_html) {
+                report += '<h4 style="margin-top:8px;">缺口与未核实之处</h4><div class="snippet">' + r.gaps_html + '</div>';
+            }
+            if (r.warnings && r.warnings.length) {
+                report += '<div class="lit-warnings"><strong>系统校验：</strong><br>' + r.warnings.map(esc).join('<br>') + '</div>';
+            }
+            if (r.judgement_html || r.gaps_html) {
+                html += rememberedDetails('lit-' + turn.id + '-report',
+                    '详细报告' + (r.judgement_chars ? '（约 ' + Number(r.judgement_chars).toLocaleString('en-US') + ' 字）' : ''),
+                    report, 'lit-report');
+            }
+            html += '<div class="lit-stats">' + esc(r.search_summary || '') + (r.search_summary ? ' · ' : '') +
+                esc(stats.rounds || 0) + ' 轮 / ' + esc(stats.tool_calls || 0) + ' 次工具调用 / 浏览 ' + esc(stats.papers_seen || 0) +
+                ' 篇' + (usage.total_tokens ? ' / ' + fmtTokens(usage.total_tokens) + ' tokens' : '') +
+                ' · ' + esc(stats.model || '') + '</div></div>';
+
+            // 3) 候选文献：高/中相关最多 8 篇直接列出，其余（含低相关）收进折叠组
+            const cands = r.candidates || [];
+            const primary = [];
+            const rest = [];
+            cands.forEach((c, i) => {
+                ((c.relevance !== 'low' && primary.length < 8) ? primary : rest).push([c, i]);
+            });
+            html += '<div class="lit-card"><h4>候选文献（' + cands.length + '）' +
+                (cands.length ? '<a class="lit-expand-all">全部展开/收起</a>' : '') + '</h4>' +
+                (cands.length ? primary.map(([c, i]) => renderCandidate(turn.id, c, i)).join('') : '<div class="empty-tip">库中未找到可列入的相关文献。</div>');
+            if (rest.length) {
+                html += rememberedDetails('lit-' + turn.id + '-more', '其余 ' + rest.length + ' 篇（相关度较低或排序靠后）',
+                    rest.map(([c, i]) => renderCandidate(turn.id, c, i)).join(''), 'lit-more');
+            }
+            if (r.orphan_evidence && r.orphan_evidence.length) {
+                html += rememberedDetails('lit-' + turn.id + '-orphans', '详细报告中引用的其他片段（' + r.orphan_evidence.length + '）',
+                    r.orphan_evidence.map((ev) => renderEvidence(turn.id, ev, ev.paper_cite)).join(''), 'lit-more');
+            }
+            return html + '</div>' + renderSecondaryCard(turn.id, r.secondary_references || []);
+        }
+
+        const helpers = { esc, safeHref, renderEvidence, rememberedDetails, fmtTokens };
+
+        function renderTurns(turns) {
+            const signature = JSON.stringify(turns.map((t) => [t.id, t.status, (t.trace || []).length, (t.usage || {}).total_tokens || 0]));
+            if (signature === lastSignature) { return; }
+            lastSignature = signature;
+            if (!turns.length) {
+                logNode.innerHTML = emptyTipHtml;
+                return;
+            }
+            const nearBottom = logNode.scrollHeight - logNode.clientHeight - logNode.scrollTop <= 60;
+            logNode.innerHTML = turns.map((turn) => {
+                let html = '<div class="lit-turn"><div class="lit-question">' + esc(turn.question) + '</div>';
+                if (turn.status === 'error') {
+                    html += '<div class="alert alert-danger">检索失败：' + esc(turn.error) + '</div>';
+                }
+                const resultHtml = cfg.renderResult ? cfg.renderResult(turn, helpers) : renderResult(turn);
+                return html + (cfg.traceFirst ? renderTrace(turn) + resultHtml : resultHtml + renderTrace(turn)) + '</div>';
+            }).join('');
+            logNode.querySelectorAll('details.lit-trace').forEach((node) => {
+                node.addEventListener('toggle', () => {
+                    if (node.open) { openTraces.add(node.dataset.turn); } else { openTraces.delete(node.dataset.turn); }
+                });
+            });
+            logNode.querySelectorAll('details.lit-paper, details[data-remember]').forEach((node) => {
+                node.addEventListener('toggle', () => {
+                    if (node.open) { openPapers.add(node.id); } else { openPapers.delete(node.id); }
+                });
+            });
+            if (nearBottom) { logNode.scrollTop = logNode.scrollHeight; }
+            if (window.MathJax && typeof window.MathJax.typesetPromise === 'function') {
+                window.MathJax.typesetPromise([logNode]);
+            }
+        }
+
+        function renderRunning(running) {
+            runningTag.style.display = running ? '' : 'none';
+            sendBtn.disabled = running;
+            sendBtn.textContent = running ? cfg.labels.busyButton : cfg.labels.button;
+            questionInput.disabled = running;
+        }
+
+        function applyState(state) {
+            if (!state || !state.ok) { return; }
+            sessionId = state.session_id;
+            renderSessions(state.sessions);
+            renderTurns(state.turns || []);
+            renderUsagePanel(state.usage_panel);
+            renderRunning(Boolean(state.is_running));
+            if (state.is_running) { schedulePoll(); }
+        }
+
+        function schedulePoll() {
+            if (pollTimer) { return; }
+            pollTimer = window.setTimeout(async () => {
+                pollTimer = null;
+                try { await fetchState(); } catch (e) { schedulePoll(); }
+            }, 1500);
+        }
+
+        async function fetchState() {
+            const resp = await fetch(cfg.api + '/state?session_id=' + encodeURIComponent(sessionId), { credentials: 'same-origin' });
+            if (resp.ok) { applyState(await resp.json()); }
+        }
+
+        form.addEventListener('submit', async (event) => {
+            event.preventDefault();
+            const question = questionInput.value.trim();
+            if (!question) { renderError(cfg.labels.empty); return; }
+            renderError('');
+            renderRunning(true);
+            try {
+                const resp = await fetch(cfg.api + '/send', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    credentials: 'same-origin',
+                    body: JSON.stringify({ session_id: sessionId, question: question, use_pro: !!useProInput.checked }),
+                });
+                const payload = await resp.json();
+                if (!resp.ok || !payload.ok) { throw new Error(payload.error || '提交失败，请重试。'); }
+                questionInput.value = '';
+                if (window.history && window.history.replaceState) {
+                    window.history.replaceState(null, '', indexUrl + '?tab=' + cfg.tab + '&' + cfg.tab + '_session=' + encodeURIComponent(payload.session_id));
+                }
+                applyState(payload);
+            } catch (error) {
+                renderError(error instanceof Error ? error.message : '提交失败，请重试。');
+                renderRunning(false);
+            }
+        });
+
+        // 事件委托：logNode 每次重绘都会替换内部 HTML
+        logNode.addEventListener('click', (event) => {
+            const toggleAll = event.target.closest('.lit-expand-all');
+            if (toggleAll) {
+                event.preventDefault();
+                const card = toggleAll.closest('.lit-card');
+                const papers = Array.from(card.querySelectorAll('details.lit-paper'));
+                const anyClosed = papers.some((d) => !d.open);
+                papers.forEach((d) => { d.open = anyClosed; });
+                // 折叠组（"其余 N 篇"）跟着一起开合，否则展开的文献仍被藏在收起的组里
+                card.querySelectorAll(':scope > details.lit-more[id$="-more"]').forEach((d) => { d.open = anyClosed; });
+                return;
+            }
+            // 点击 [E#]/短引用：目标若在折叠的候选文献里，先展开再跳转
+            const cite = event.target.closest('a.lit-cite, a.lit-cite-paper');
+            if (cite) {
+                const id = decodeURIComponent((cite.getAttribute('href') || '').slice(1));
+                const target = id ? document.getElementById(id) : null;
+                if (!target) { return; }
+                event.preventDefault();
+                let node = target;
+                while (node && node !== logNode) {
+                    if (node.tagName === 'DETAILS') { node.open = true; }
+                    node = node.parentElement;
+                }
+                target.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                if (target.classList.contains('lit-evidence')) {
+                    target.style.outline = '2px solid #60a5fa';
+                    window.setTimeout(() => { target.style.outline = ''; }, 1800);
+                }
+            }
+        });
+
+        questionInput.addEventListener('keydown', (event) => {
+            if (event.key === 'Enter' && (event.metaKey || event.ctrlKey)) {
+                form.requestSubmit();
+            }
+        });
+
+        fetchState().catch(() => {});
+    }
+
+    // ---------- AI 对话：回答 + 参考文献 + 引用片段 ----------
+    function renderChatResult(turn, h) {
+        const r = turn.result;
+        if (!r) { return ''; }
+        let html = '<article class="bubble assistant lit-chat-answer"><div class="bubble-role">AI' +
+            (r.legacy ? ' <span class="lit-stats">（旧版对话记录）</span>' : '') + '</div>' +
+            '<div class="bubble-content snippet">' + (r.answer_html || '') + '</div>';
+        const papers = r.cited_papers || [];
+        if (papers.length) {
+            const items = papers.map((p) => {
+                const links = [];
+                const z = h.safeHref(p.zotero_select_url, ['zotero://']);
+                const zp = h.safeHref(p.zotero_pdf_url, ['zotero://']);
+                const doi = h.safeHref(p.doi_url, ['https://doi.org/']);
+                if (z) { links.push('<a href="' + z + '">在 Zotero 中显示</a>'); }
+                if (zp) { links.push('<a href="' + zp + '">打开 PDF</a>'); }
+                if (doi) { links.push('<a href="' + doi + '" target="_blank" rel="noopener">DOI</a>'); }
+                return '<li id="lit-' + h.esc(turn.id) + '-P' + h.esc(p.paper_id) + '"><strong>' + h.esc(p.short_cite) + '</strong> ' +
+                    h.esc(p.title) + (links.length ? '<span class="lit-paper-links"> · ' + links.join('') + '</span>' : '') + '</li>';
+            }).join('');
+            html += h.rememberedDetails('lit-' + turn.id + '-refs', '参考文献（' + papers.length + '）',
+                '<ol class="lit-chat-refs">' + items + '</ol>', 'lit-more');
+        }
+        const evidence = r.evidence || [];
+        if (evidence.length) {
+            html += h.rememberedDetails('lit-' + turn.id + '-evidence', '引用的原文片段（' + evidence.length + '）',
+                evidence.map((ev) => h.renderEvidence(turn.id, ev)).join(''), 'lit-more');
+        }
+        if (r.warnings && r.warnings.length) {
+            html += '<div class="lit-warnings"><strong>系统校验：</strong><br>' + r.warnings.map(h.esc).join('<br>') + '</div>';
+        }
+        return html + '</article>';
+    }
+
+    if (document.getElementById('lit-root')) {
+        pbAgentView({
+            prefix: 'lit', tab: 'lit', api: '/admin-api/litsearch',
+            labels: { noSessions: '暂无检索记录。', usageEmpty: '开始检索后，这里会实时显示 token 消耗与预估费用。',
+                      current: '当前检索', button: '检索', busyButton: '检索中...', empty: '请输入检索需求。' },
+        });
+    }
+    if (document.getElementById('chat-root')) {
+        pbAgentView({
+            prefix: 'chat', tab: 'chat', api: '/admin-api/chat', traceFirst: true, renderResult: renderChatResult,
+            labels: { noSessions: '暂无对话。', usageEmpty: '开始对话后，这里会实时显示 token 消耗与预估费用。',
+                      current: '当前一问', button: '发送', busyButton: '思考中...', empty: '请输入问题后再发送。' },
+        });
+    }
+</script>
+{% endblock %}
