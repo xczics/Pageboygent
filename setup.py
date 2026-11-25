@@ -42,6 +42,7 @@ setup(
     package_dir={"": "src"},
     packages=find_packages(where="src", exclude=["tests", "tests.*"]),
     include_package_data=True,
+    package_data={"Pageboygent": ["templates/admin/*.html", "tags.txt"]},
     install_requires=[
         "openai",
         "peewee",
