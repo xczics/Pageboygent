@@ -62,10 +62,13 @@ def test_table_pages_live_under_database(client, path, active):
     assert f"{active}*" in _sub_nav(html)
 
 
-def test_home_redirects_and_keeps_legacy_links(client):
-    assert client.get("/admin/").headers["Location"].endswith("/admin/chat/")
+def test_home_is_paper_tracking_dashboard_reached_via_brand(client):
+    html = client.get("/admin/").get_data(as_text=True)
+    assert 'id="fh-root"' in html and "订阅源" not in _top_nav(html)
+    assert "主页" not in _top_nav(html)                      # 主页不进导航栏
+    assert 'class="navbar-brand pb-brand" href="/admin/"' in html  # 点 “Pageboygent” 进主页
     location = client.get("/admin/?tab=lit&lit_session=abc").headers["Location"]
-    assert location.endswith("/admin/litsearch/?lit_session=abc")
+    assert location.endswith("/admin/litsearch/?lit_session=abc")  # 旧链接仍可用
 
 
 def test_year_histogram_groups_early_years():

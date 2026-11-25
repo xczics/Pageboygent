@@ -54,6 +54,8 @@ setup(
         "Flask-Admin",
         "chromadb",
         "whoosh",
+        "feedparser",
+        "numpy",
         "ollama",
         "worthy",
     ],

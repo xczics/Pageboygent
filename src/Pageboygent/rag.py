@@ -1,4 +1,3 @@
-from ollama import Client
 from typing import Tuple,List,Iterator,Self, Dict, Any, cast
 from pathlib import Path
 from peewee import Model, SqliteDatabase
@@ -16,14 +15,6 @@ import threading
 import time
 from worthy import Worthy, LLMConfig, EmbeddingConfig, Thresholds
 
-client = Client(host="http://localhost:11434")
-
-# 只提示不退出：embedding_url 指向 Ollama 时，embedding 入库会失败，但其他功能（UI、问答、summary）不受影响
-try:
-    client.list()
-except Exception as e:
-    print("⚠️ Ollama 服务未启动或不可用，embedding 相关功能将不可用：", e)
-
 def _get_workstation_dir() -> Path:
     return Path(get_config("workstation_dir")).expanduser()
 _workstation = _get_workstation_dir()
@@ -40,6 +31,28 @@ except KeyError:
     embedding_key = None
 if embedding_key is None:
     embedding_key = "ollama"
+
+
+def check_embedding_service(timeout: float = 3.0) -> str | None:
+    """检查 embedding_url 上的 OpenAI 兼容接口是否可用（Ollama、OpenAI 和各类云平台都走这一个接口）。
+    可用返回 None，否则返回原因。以前这里写死检查 localhost:11434 的 Ollama，
+    换成云端 embedding 或 Ollama 不在本机时会误报。"""
+    import requests
+
+    try:
+        resp = requests.get(str(embedding_url).rstrip("/") + "/models", timeout=timeout,
+                            headers={"Authorization": f"Bearer {embedding_key}"})
+        if resp.status_code >= 400:
+            return f"{embedding_url} 返回 HTTP {resp.status_code}"
+    except Exception as exc:
+        return f"{embedding_url} 无法连接：{exc}"
+    return None
+
+
+# 只提示不退出：embedding 服务不可用时，embedding 入库会失败，但其他功能（UI、问答、summary）不受影响
+_embedding_problem = check_embedding_service()
+if _embedding_problem:
+    print("⚠️ Embedding 服务不可用，embedding 相关功能将不可用：", _embedding_problem)
 
 def hash_file(file_path: Path) -> str:
     #计算文件的hash值，使用sha256算法

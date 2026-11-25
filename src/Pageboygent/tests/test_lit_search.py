@@ -31,6 +31,12 @@ class FakeBackend(lit_search.SearchBackend):
     def summary_keywords(self, expression, limit):
         return [(1, None, SUMMARY_1)]
 
+    def ai_notes(self, query, *, mode, kinds, limit):
+        rows = self.summary_bm25(query, limit) if mode == "bm25" else self.summary_keywords(query, limit)
+        hits = [{"paper_id": pid, "key": "qs", "kind": "summary", "label": "AI 快速总结", "content": text,
+                 "score": score or 1.0} for pid, score, text in rows]
+        return [h for h in hits if not kinds or h["kind"] in kinds]
+
     def fulltext_bm25(self, query, limit):
         return [
             {"paper_id": 1, "line_number": 42, "text": "The δ66Zn values of lunar basalts are ~1.4‰ heavier than Earth.", "score": 9.1},

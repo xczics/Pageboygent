@@ -23,6 +23,7 @@ AI 文献检索 Agent：通过自然语言对话，在追踪的文献库中检�
 from __future__ import annotations
 
 import copy
+from collections import Counter
 import hashlib
 import json
 import re
@@ -53,7 +54,8 @@ SYSTEM_PROMPT = """
 部分文献还有主题总结与精读笔记。库内文献绝大多数为英文。
 
 ## 工具
-- search_summaries(query, mode): 检索每篇文献的 AI 快速总结。mode=bm25 为相关度排序（自然语言/多词，词间为 OR，命中越多越靠前）；
+- search_summaries(query, mode, sources): 检索预生成的 AI 总结与笔记（快速总结、主题总结、精读笔记，结果标注来源）。
+  mode=bm25 为相关度排序（自然语言/多词，词间为 OR，命中越多越靠前）；
   mode=keywords 为布尔匹配（支持 AND/OR/NOT/括号/"引号短语"，词间默认 AND），适合精确限定。最快定位候选文献。
 - search_fulltext_bm25(query): 原文切块 BM25 检索（已做词干化，evaporation 可命中 evaporated）。
 - search_fulltext_semantic(query): 原文切块向量语义检索（RAG），适合换一种说法表达同一概念、或用一句完整的英文描述来找。
@@ -155,13 +157,19 @@ _TOP_K = {"type": "integer", "description": "返回条数，默认 12，最大 3
 SEARCH_TOOLS = [
     _tool(
         "search_summaries",
-        "检索每篇文献的 AI 快速总结（quick summary），按文献返回最相关的总结段落。最快定位候选文献。",
+        "检索预生成的 AI 总结与笔记：快速总结（每篇都有）、主题总结（针对某个综述主题写的）、精读笔记（综述精读时写的，信息最密）。"
+        "按文献返回最相关的段落，并标注来源。最快定位候选文献。",
         {
             "query": {"type": "string", "description": "英文为主的检索词或布尔表达式"},
             "mode": {
                 "type": "string",
                 "enum": ["bm25", "keywords"],
                 "description": "bm25=相关度排序（词间 OR）；keywords=布尔匹配（词间默认 AND，支持 AND/OR/NOT/括号/引号短语）",
+            },
+            "sources": {
+                "type": "array",
+                "items": {"type": "string", "enum": ["summary", "theme", "note"]},
+                "description": "只检索部分来源：summary=快速总结，theme=主题总结，note=精读笔记等；默认全部",
             },
             "top_k": _TOP_K,
         },
@@ -328,6 +336,11 @@ class SearchBackend:
             return []
         hits = search_quick_summary_by_key_words(expression)
         return [(pid, None, summary) for pid, summary in list(hits.items())[:limit]]
+
+    def ai_notes(self, query: str, *, mode: str, kinds: list[str] | None, limit: int) -> list[dict]:
+        from . import ai_notes_index
+
+        return ai_notes_index.search(query, mode=mode, kinds=kinds, limit=limit)
 
     def fulltext_bm25(self, query: str, limit: int) -> list[dict]:
         from . import rag
@@ -961,23 +974,34 @@ class LitSearchToolbox:
                 bucket.append(ev)
         return grouped
 
-    def search_summaries(self, query: str, mode: str = "bm25", top_k: int = 12) -> str:
+    MAX_NOTE_DOCS_PER_PAPER = 2
+
+    def search_summaries(self, query: str, mode: str = "bm25", top_k: int = 12,
+                         sources: list[str] | None = None) -> str:
+        """检索 AI 快速总结 + 主题总结 + 精读笔记（统一的 BM25 索引）。每篇文献最多取 2 份最相关的文档。"""
         mode = "keywords" if mode == "keywords" else "bm25"
-        if mode == "bm25":
-            hits = self.backend.summary_bm25(query, top_k)
-        else:
-            hits = self.backend.summary_keywords(query, top_k)
+        hits = self.backend.ai_notes(query, mode=mode, kinds=sources, limit=top_k * 4)
         grouped: dict[int, list[Evidence]] = {}
-        for paper_id, score, summary in hits:
-            paper_id = int(paper_id)
+        docs_per_paper: dict[int, int] = {}
+        kinds = Counter()
+        for hit in hits:
+            paper_id = int(hit["paper_id"])
             if self.paper(paper_id) is None:
                 continue
-            for index, para in _best_paragraphs(summary or "", query):
-                ev = self.add_evidence(("note", paper_id, "qs", index), paper_id=paper_id, kind="summary",
-                                       label=f"AI 快速总结 §{index + 1}", text=para,
-                                       method=f"summary-{mode}", score=score)
+            if paper_id not in grouped and len(grouped) >= top_k:
+                continue
+            if docs_per_paper.get(paper_id, 0) >= self.MAX_NOTE_DOCS_PER_PAPER:
+                continue
+            docs_per_paper[paper_id] = docs_per_paper.get(paper_id, 0) + 1
+            kinds[hit["kind"]] += 1
+            for index, para in _best_paragraphs(hit["content"], query):
+                ev = self.add_evidence(("note", paper_id, hit["key"], index), paper_id=paper_id, kind=hit["kind"],
+                                       label=f"{hit['label']} §{index + 1}", text=para,
+                                       method=f"notes-{mode}", score=hit["score"])
                 grouped.setdefault(paper_id, []).append(ev)
-        return self._format_grouped(f"search_summaries(mode={mode}, query={query!r})", grouped)
+        source_text = "、".join(f"{KIND_LABELS[k]} {n}" for k, n in kinds.items()) or "无"
+        return self._format_grouped(
+            f"search_summaries(mode={mode}, query={query!r})  命中文档：{source_text}", grouped)
 
     def search_fulltext_bm25(self, query: str, top_k: int = 12) -> str:
         # 多取一些再按文献限流，保证结果覆盖更多文献
@@ -1214,7 +1238,9 @@ class LitSearchToolbox:
             top_k = 12
         try:
             if name == "search_summaries":
-                result = self.search_summaries(str(args.get("query", "")), str(args.get("mode", "bm25")), top_k)
+                sources = args.get("sources")
+                result = self.search_summaries(str(args.get("query", "")), str(args.get("mode", "bm25")), top_k,
+                                               [sources] if isinstance(sources, str) else sources)
             elif name == "search_fulltext_bm25":
                 result = self.search_fulltext_bm25(str(args.get("query", "")), top_k)
             elif name == "search_fulltext_semantic":
@@ -2372,6 +2398,11 @@ def warmup_indexes() -> None:
             added = rag.sync_bm25_index(force=True, on_progress=print)
             if added:
                 print(f"[lit_search] full-text BM25 index synced: +{added} chunks")
+            from . import ai_notes_index
+
+            changes = ai_notes_index.sync(force=True)
+            if any(changes.values()):
+                print(f"[lit_search] AI notes index synced: {changes}")
         except Exception as exc:
             print(f"[lit_search] BM25 index warmup failed: {exc}")
 

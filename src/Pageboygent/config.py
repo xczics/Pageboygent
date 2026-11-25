@@ -521,6 +521,35 @@ def _initialize_default_configs() -> None:
     default=32768,
     description="Review pipeline: max output tokens per LLM call (planning, notes, reviews, final review)",
     )
+    register_config(
+    "feed_fetch_interval_hours",
+    type_=float,
+    default=6.0,
+    description="Paper tracking (RSS): fetch all feeds every N hours (driven by the storage heartbeat)",
+    )
+    register_config(
+    "feed_retention_days",
+    type_=int,
+    default=60,
+    description="Paper tracking (RSS): RSS items older than this are deleted automatically (ingested items and items you rated are kept as training examples)",
+    )
+    register_config(
+    "feed_root_collection",
+    default="RSS_TRACK",
+    description="Paper tracking (RSS): Zotero collection for ingested papers; each feed gets a sub-collection",
+    )
+    register_config(
+    "feed_auto_ingest_per_run",
+    type_=int,
+    default=10,
+    description="Paper tracking (RSS): max papers auto-ingested per fetch run",
+    )
+    register_config(
+    "feed_llm_batch_size",
+    type_=int,
+    default=8,
+    description="Paper tracking (RSS): papers judged per LLM call (shortlist only)",
+    )
     # LLM 费率（元 / 百万 tokens），用于前端预估费用。默认值为 DeepSeek-V4.1-Flash 高峰时段费率。
     for _tier, _label, _defaults in (
         ("cheap", "model_name_cheap", (0.04, 2.0, 8.0)),

@@ -1368,16 +1368,22 @@ def _build_session_context(tab: str) -> str:
 
 
 class HomeView(AdminIndexView):
-    """/admin/：默认进入 AI 对话；兼容旧的 ?tab=chat|lit|rag 链接。"""
+    """主页：文献追踪（RSS）看板 + 阅读器 + 设置。兼容旧的 ?tab=chat|lit|rag 链接（跳转到对应页面）。"""
 
-    def is_visible(self) -> bool:
-        return False
+    pb_section = "home"
 
     @expose("/")
     def index(self):
-        target = {"lit": "litsearch.index", "rag": "rag.index"}.get((request.args.get("tab") or "").lower(), "chat.index")
-        params = {k: v for k, v in request.args.items() if k != "tab"}
-        return redirect(url_for(target, **params))
+        tab = (request.args.get("tab") or "").lower()
+        if tab in {"chat", "lit", "rag"}:
+            target = {"lit": "litsearch.index", "rag": "rag.index"}.get(tab, "chat.index")
+            params = {k: v for k, v in request.args.items() if k != "tab"}
+            return redirect(url_for(target, **params))
+        from . import settings
+
+        missing = settings.describe()["missing"]
+        return self.render("admin/pb_home.html", missing_settings=[m["label"] for m in missing],
+                           initial_tab="settings" if missing else (request.args.get("view") or "overview"))
 
 
 class AgentPageView(BaseView):
@@ -1765,6 +1771,194 @@ def _dashboard_stats() -> dict:
     }
 
 
+# ---------------------------------------------------------------------------
+# 主页：文献追踪
+# ---------------------------------------------------------------------------
+
+_FEED_BAND_LABELS = {"auto": "自动入库", "confirm": "待确认", "low": "低分"}
+_FEED_STATUS_LABELS = {"new": "待评分", "scored": "已评分", "ingested": "已入库", "in_library": "库中已有",
+                       "dismissed": "不感兴趣", "error": "出错"}
+
+
+def _safe_run(fn) -> None:
+    try:
+        fn()
+    except Exception as exc:  # pragma: no cover
+        print(f"[paper_feed] run failed: {exc}")
+
+
+def _feed_item_payload(item, detail: bool = False) -> dict:
+    features = json.loads(item.features or "{}")
+    authors = item.authors_list()
+    data = {
+        "id": item.id, "title": item.title, "link": item.link, "doi": item.doi,
+        "doi_url": f"https://doi.org/{item.doi}" if item.doi else None,
+        "journal": item.journal, "published": item.published.strftime("%Y-%m-%d") if item.published else "",
+        "authors": authors[:6], "author_count": len(authors), "feed": item.feed.name, "feed_id": item.feed_id,
+        "score": None if item.score is None else round(item.score * 100),
+        "band": item.band, "band_label": _FEED_BAND_LABELS.get(item.band or "", ""),
+        "status": item.status, "status_label": _FEED_STATUS_LABELS.get(item.status, item.status),
+        "facet": item.facet_name, "llm_score": item.llm_score, "reason": item.llm_reason or "",
+        "has_abstract": bool(item.abstract), "abstract_source": item.abstract_source,
+        "feedback": item.feedback, "exploration": bool(item.exploration), "unread": item.read_at is None,
+        "ingest_error": item.ingest_error,
+        "zotero_url": f"zotero://select/library/items/{item.zotero_key}" if item.zotero_key else None,
+        "created_at": item.created_at.strftime("%m-%d %H:%M"),
+    }
+    if detail:
+        from markdownify import markdownify
+
+        raw_md = markdownify(item.raw_html or "", strip=["img", "script", "style"]).strip() if item.raw_html else ""
+        data.update({
+            "abstract_html": str(_render_markdown_html(item.abstract or "")),
+            "raw_html": str(_render_markdown_html(raw_md)),
+            "nearest": [{**n, "zotero_url": f"zotero://select/library/items/{n['key']}" if n.get("key") else None}
+                        for n in features.get("nearest", [])],
+            "signals": {"dense": features.get("dense"), "lexical": features.get("lexical"),
+                        "author": features.get("author"), "author_match": features.get("author_match"),
+                        "author_count": features.get("author_count"), "feedback": features.get("feedback"),
+                        "base": None if item.base_score is None else round(item.base_score * 100)},
+        })
+    return data
+
+
+def _feed_report_payload(report) -> dict:
+    from . import paper_feed
+
+    data = json.loads(report.data or "{}")
+    ids = {i for ids in data.get("groups", {}).values() for i in ids} | set(data.get("confirm", [])) | set(data.get("boundary", []))
+    items = {i.id: _feed_item_payload(i) for i in paper_feed.Item.select().where(paper_feed.Item.id.in_(list(ids)))}
+    return {
+        "week": report.week, "range": data.get("range"), "unread": report.read_at is None,
+        "generated_at": report.generated_at.strftime("%Y-%m-%d %H:%M"), "stats": data.get("stats", {}),
+        "overview_html": str(_render_markdown_html(re.sub(r"\[(F\d+)\]", r"[\1]", report.overview or ""))),
+        "groups": [{"name": name, "items": [items[i] for i in group if i in items]}
+                   for name, group in data.get("groups", {}).items()],
+        "confirm": [items[i] for i in data.get("confirm", []) if i in items],
+        "boundary": [items[i] for i in data.get("boundary", []) if i in items],
+        "by_feed": data.get("by_feed", {}),
+    }
+
+
+def _feed_overview() -> dict:
+    from . import paper_feed
+
+    paper_feed.init_db()
+    Item, Feed = paper_feed.Item, paper_feed.Feed
+    feeds = []
+    for feed in Feed.select().order_by(Feed.created_at):
+        total = Item.select().where(Item.feed == feed).count()
+        picked = Item.select().where((Item.feed == feed) & Item.band.in_(["auto", "confirm"])).count()
+        unread = Item.select().where((Item.feed == feed) & Item.read_at.is_null(True)).count()
+        feeds.append({"id": feed.id, "name": feed.name, "url": feed.url, "enabled": feed.enabled, "broad": feed.broad,
+                      "last_fetch_at": feed.last_fetch_at.strftime("%m-%d %H:%M") if feed.last_fetch_at else None,
+                      "last_new_count": feed.last_new_count, "last_error": feed.last_error,
+                      "items": total, "picked": picked, "unread": unread})
+    unread_report = (paper_feed.Report.select().where(paper_feed.Report.read_at.is_null(True))
+                     .order_by(paper_feed.Report.week.desc()).first())
+    confirm = list(Item.select().where((Item.band == "confirm") & (Item.status == "scored"))
+                   .order_by(Item.score.desc()).limit(12))
+    week_start, _ = paper_feed.week_range(paper_feed.iso_week(datetime.now()))
+    this_week = Item.select().where(Item.created_at >= week_start)
+    return {
+        "status": paper_feed.status(),
+        "feeds": feeds,
+        "unread_report": _feed_report_payload(unread_report) if unread_report else None,
+        "confirm": [_feed_item_payload(i) for i in confirm],
+        "confirm_total": Item.select().where((Item.band == "confirm") & (Item.status == "scored")).count(),
+        "week": {"items": this_week.count(),
+                 "auto": this_week.where(Item.ingest_mode == "auto").count(),
+                 "confirm": this_week.where(Item.band == "confirm").count(),
+                 "unread": Item.select().where(Item.read_at.is_null(True)).count()},
+        "precision": paper_feed.precision_stats(),
+        "retention_days": paper_feed.retention_days(),
+    }
+
+
+def _feed_items(args) -> dict:
+    from . import paper_feed
+
+    paper_feed.init_db()
+    Item = paper_feed.Item
+    query = Item.select()
+    if args.get("feed_id"):
+        query = query.where(Item.feed == int(args["feed_id"]))
+    view = args.get("view") or "all"
+    if view == "unread":
+        query = query.where(Item.read_at.is_null(True))
+    elif view == "recommended":
+        query = query.where(Item.band.in_(["auto", "confirm"]))
+    elif view in {"auto", "confirm", "low"}:
+        query = query.where(Item.band == view)
+    elif view in {"ingested", "dismissed", "in_library", "new"}:
+        query = query.where(Item.status == view)
+    if args.get("q"):
+        query = query.where(Item.title.contains(args["q"]))
+    order = Item.score.desc(nulls="last") if args.get("sort") == "score" else Item.created_at.desc()
+    page = max(1, int(args.get("page") or 1))
+    total = query.count()
+    rows = list(query.order_by(order, Item.id.desc()).paginate(page, 50))
+    return {"items": [_feed_item_payload(i) for i in rows], "total": total, "page": page}
+
+
+def _paper_titles(pids: set[int]) -> dict[int, str]:
+    from .storage import Paper
+
+    if not pids:
+        return {}
+    return {p.id: f"{p.first_author or 'Unknown'} ({p.year or 'n.d.'}) {p.title}"
+            for p in Paper.select(Paper.id, Paper.first_author, Paper.year, Paper.title).where(Paper.id.in_(list(pids)))}
+
+
+def _facet_group_payload(group: dict, settings_map: dict, titles: dict[int, str]) -> dict:
+    from . import facet_store
+
+    def _row(c: dict) -> dict:
+        row = {"id": c["id"], "text": c["text"], "kind": c["kind"], "by": c["by"], "edited": bool(c.get("edited")),
+               "status": c["status"], "changed_at": (c.get("changed_at") or "")[:10]}
+        if c.get("resurfaced"):
+            r = c["resurfaced"]
+            row["resurfaced"] = {"from": r["from"], "count": r.get("support_count", len(r.get("support", []))),
+                                 "support": [titles[p] for p in r.get("support", []) if p in titles]}
+        if c["status"] in {"deleted", "ignored"}:
+            row["eligible_at"] = (c.get("eligible_at") or "")[:10]
+        return row
+
+    custom = settings_map.get(group["id"], {})
+    rows = [_row(c) for c in group["claims"]]
+    return {"id": group["id"], "name": group.get("name") or "", "name_by": group.get("name_by", "ai"),
+            "number": group["id"].split(":")[-1], "papers": len(group["pids"]),
+            "small": len(group["pids"]) < facet_store.SMALL_GROUP, "created_by": group.get("created_by", "ai"),
+            "created_at": (group.get("created_at") or "")[:10], "touched": bool(group.get("touched")),
+            "enabled": custom.get("enabled", True), "weight": custom.get("weight", 1.0),
+            "rows": [r for r in rows if r["status"] in {"active", "suggested"}],
+            "bin": [r for r in rows if r["status"] in {"deleted", "ignored", "blocked"}],
+            "pending_new": len([p for p in group["pids"] if p not in set(group.get("described_pids", []))]),
+            "representative": [titles[p] for p in group.get("representative", []) if p in titles]}
+
+
+def _feed_profile_payload() -> dict:
+    from . import paper_feed
+
+    profile = paper_feed.load_profile()
+    settings_map = profile.get("facets", {})
+    data = paper_feed.facet_store_ready().load()
+    wanted = {p for g in data["groups"] for p in g.get("representative", [])}
+    wanted |= {p for g in data["groups"] for c in g["claims"] for p in (c.get("resurfaced") or {}).get("support", [])}
+    titles = _paper_titles(wanted)
+    names = {g["id"]: g.get("name") or f"分组 {g['id'].split(':')[-1]}" for g in data["groups"]}
+    suggestions = [{**{k: v for k, v in s.items() if k != "parts"}, "names": [names.get(g, g) for g in s["groups"]],
+                    "sizes": [len(part) for part in s.get("parts", [])]} for s in data.get("suggestions", [])]
+    return {"facets": [_facet_group_payload(g, settings_map, titles) for g in data["groups"]],
+            "grouped_at": (data.get("grouped_at") or "")[:16].replace("T", " "),
+            "library_size": len(data.get("library_pids", [])), "unassigned": len(data.get("unassigned", [])),
+            "suggestions": suggestions,
+            "deleted_groups": [{"id": g["id"], "name": g.get("name") or g["id"], "papers": len(g["pids"]),
+                                "deleted_at": (g.get("deleted_at") or "")[:10]} for g in data.get("deleted_groups", [])][::-1],
+            "must_follow_authors": profile.get("must_follow_authors", []),
+            "avoid_topics": profile.get("avoid_topics", []), "notes": profile.get("notes", "")}
+
+
 @dataclass(frozen=True)
 class BindTarget:
     host: str
@@ -1924,6 +2118,238 @@ def create_storage_admin_app() -> Flask:
         text = re.sub(r"\A\s*<!--.*?-->\s*", "", text, flags=re.S)
         return jsonify({"ok": True, "path": path, "html": str(_render_markdown_html(text))})
 
+    # ---- 主页：文献追踪 + 设置 ----
+    def _json_body() -> dict:
+        payload = request.get_json(silent=True)
+        return payload if isinstance(payload, dict) else {}
+
+    def _feed_error(exc: Exception, code: int = 400):
+        return jsonify({"ok": False, "error": str(exc)}), code
+
+    @app.get("/admin-api/feed/overview")
+    def feed_api_overview() -> Any:
+        return jsonify({"ok": True, **_feed_overview()})
+
+    @app.post("/admin-api/feed/preview")
+    def feed_api_preview() -> Any:
+        from . import paper_feed
+
+        try:
+            return jsonify({"ok": True, **paper_feed.preview_feed(str(_json_body().get("url") or "").strip())})
+        except Exception as exc:
+            return _feed_error(exc)
+
+    @app.post("/admin-api/feed/add")
+    def feed_api_add() -> Any:
+        from . import paper_feed
+
+        body = _json_body()
+        try:
+            paper_feed.add_feed(str(body.get("name") or ""), str(body.get("url") or ""), _as_bool(body.get("broad")))
+        except Exception as exc:
+            return _feed_error(exc)
+        return jsonify({"ok": True, **_feed_overview()})
+
+    @app.post("/admin-api/feed/update")
+    def feed_api_update() -> Any:
+        from . import paper_feed
+
+        body = _json_body()
+        try:
+            paper_feed.update_feed(int(body["id"]), name=body.get("name"),
+                                   enabled=None if body.get("enabled") is None else _as_bool(body.get("enabled")),
+                                   broad=None if body.get("broad") is None else _as_bool(body.get("broad")))
+        except Exception as exc:
+            return _feed_error(exc)
+        return jsonify({"ok": True, **_feed_overview()})
+
+    @app.post("/admin-api/feed/delete")
+    def feed_api_delete() -> Any:
+        from . import paper_feed
+
+        try:
+            paper_feed.delete_feed(int(_json_body()["id"]))
+        except Exception as exc:
+            return _feed_error(exc)
+        return jsonify({"ok": True, **_feed_overview()})
+
+    @app.post("/admin-api/feed/run")
+    def feed_api_run() -> Any:
+        from . import paper_feed
+
+        if paper_feed.status().get("running"):
+            return _feed_error(RuntimeError("正在抓取中"), 409)
+        threading.Thread(target=lambda: _safe_run(paper_feed.run_once), name="paper-feed-run", daemon=True).start()
+        time.sleep(0.2)
+        return jsonify({"ok": True, **_feed_overview()})
+
+    @app.get("/admin-api/feed/items")
+    def feed_api_items() -> Any:
+        return jsonify({"ok": True, **_feed_items(request.args)})
+
+    @app.get("/admin-api/feed/item")
+    def feed_api_item() -> Any:
+        from . import paper_feed
+
+        paper_feed.init_db()
+        item = paper_feed.Item.get_or_none(paper_feed.Item.id == int(request.args.get("id") or 0))
+        if item is None:
+            return _feed_error(LookupError("条目不存在（可能已被自动清理）"), 404)
+        paper_feed.mark_read(item.id)
+        return jsonify({"ok": True, "item": _feed_item_payload(item, detail=True)})
+
+    @app.post("/admin-api/feed/feedback")
+    def feed_api_feedback() -> Any:
+        from . import paper_feed
+
+        body = _json_body()
+        item = paper_feed.set_feedback(int(body["id"]), int(body.get("value") or 0))
+        return jsonify({"ok": True, "item": _feed_item_payload(item)})
+
+    @app.post("/admin-api/feed/ingest")
+    def feed_api_ingest() -> Any:
+        from . import paper_feed
+
+        item = paper_feed.confirm_ingest(int(_json_body()["id"]))
+        if item.ingest_error:
+            return jsonify({"ok": False, "error": "入库失败：" + item.ingest_error, "item": _feed_item_payload(item)}), 502
+        return jsonify({"ok": True, "item": _feed_item_payload(item)})
+
+    @app.get("/admin-api/feed/reports")
+    def feed_api_reports() -> Any:
+        from . import paper_feed
+
+        paper_feed.init_db()
+        reports = [{"week": r.week, "generated_at": r.generated_at.strftime("%Y-%m-%d %H:%M"), "unread": r.read_at is None,
+                    "stats": json.loads(r.data or "{}").get("stats", {}), "range": json.loads(r.data or "{}").get("range")}
+                   for r in paper_feed.Report.select().order_by(paper_feed.Report.week.desc())]
+        return jsonify({"ok": True, "reports": reports})
+
+    @app.get("/admin-api/feed/report")
+    def feed_api_report() -> Any:
+        from . import paper_feed
+
+        paper_feed.init_db()
+        report = paper_feed.Report.get_or_none(paper_feed.Report.week == str(request.args.get("week") or ""))
+        if report is None:
+            return _feed_error(LookupError("周报不存在"), 404)
+        return jsonify({"ok": True, "report": _feed_report_payload(report)})
+
+    @app.post("/admin-api/feed/report/read")
+    def feed_api_report_read() -> Any:
+        from . import paper_feed
+
+        paper_feed.init_db()
+        paper_feed.Report.update(read_at=datetime.now()).where(
+            paper_feed.Report.week == str(_json_body().get("week") or "")).execute()
+        return jsonify({"ok": True})
+
+    @app.post("/admin-api/feed/report/generate")
+    def feed_api_report_generate() -> Any:
+        from . import paper_feed
+
+        week = str(_json_body().get("week") or "") or paper_feed.iso_week(datetime.now())
+        try:
+            report = paper_feed.generate_report(week)
+        except Exception as exc:
+            return _feed_error(exc, 500)
+        return jsonify({"ok": True, "report": _feed_report_payload(report)})
+
+    @app.get("/admin-api/feed/profile")
+    def feed_api_profile() -> Any:
+        return jsonify({"ok": True, **_feed_profile_payload()})
+
+    @app.post("/admin-api/feed/profile")
+    def feed_api_profile_save() -> Any:
+        from . import paper_feed
+
+        paper_feed.save_profile(_json_body())
+        return jsonify({"ok": True, **_feed_profile_payload()})
+
+    @app.post("/admin-api/feed/facet")
+    def feed_api_facet_edit() -> Any:
+        from . import paper_feed
+
+        body = _json_body()
+        store = paper_feed.facet_store_ready()
+        try:
+            result = store.edit_claims(str(body.get("group") or ""), str(body.get("op") or ""),
+                                       **{k: v for k, v in body.items() if k not in {"group", "op"}})
+        except (ValueError, KeyError) as exc:
+            return jsonify({"ok": False, "error": str(exc)}), 400
+        titles = _paper_titles({p for c in result["group"]["claims"] for p in (c.get("resurfaced") or {}).get("support", [])}
+                               | set(result["group"].get("representative", [])))
+        return jsonify({"ok": True, "claim": result.get("claim"),
+                        "group": _facet_group_payload(result["group"], paper_feed.load_profile().get("facets", {}), titles)})
+
+    @app.post("/admin-api/feed/groups")
+    def feed_api_groups() -> Any:
+        from . import paper_feed
+
+        body = _json_body()
+        store = paper_feed.facet_store_ready()
+        op = str(body.get("op") or "")
+        try:
+            if op == "delete":
+                store.delete_group(str(body["group"]))
+            elif op == "restore":
+                store.restore_group(str(body["group"]))
+            elif op == "merge":
+                store.merge_groups(str(body["group"]), str(body["target"]))
+            elif op == "apply":
+                store.apply_suggestion(str(body["key"]))
+            elif op == "dismiss":
+                store.dismiss_suggestion(str(body["key"]))
+            else:
+                raise ValueError(f"未知操作：{op}")
+        except (ValueError, KeyError) as exc:
+            return jsonify({"ok": False, "error": str(exc)}), 400
+        paper_feed.invalidate_model()
+        return jsonify({"ok": True, **_feed_profile_payload()})
+
+    _describe_state = {"running": False, "error": None}
+
+    @app.post("/admin-api/feed/profile/describe")
+    def feed_api_profile_describe() -> Any:
+        from . import paper_feed
+
+        if _describe_state["running"]:
+            return jsonify({"ok": True, "running": True})
+
+        def _run() -> None:
+            _describe_state.update(running=True, error=None)
+            try:
+                if _as_bool(_json_body_cache.get("regroup")):
+                    paper_feed.request_regroup()
+                model, rb, _ = paper_feed.library_model(describe=False)  # 首次会为全库计算向量并分组
+                paper_feed.describe_facets(model, rb, rb.library_papers(), force=_as_bool(_json_body_cache.get("force")))
+            except Exception as exc:
+                _describe_state["error"] = str(exc)
+            finally:
+                _describe_state["running"] = False
+
+        _json_body_cache = _json_body()
+        threading.Thread(target=_run, name="facet-describe", daemon=True).start()
+        return jsonify({"ok": True, "running": True})
+
+    @app.get("/admin-api/feed/profile/describe")
+    def feed_api_profile_describe_state() -> Any:
+        return jsonify({"ok": True, **_describe_state})
+
+    @app.get("/admin-api/settings")
+    def settings_api_get() -> Any:
+        from . import settings
+
+        return jsonify({"ok": True, **settings.describe()})
+
+    @app.post("/admin-api/settings")
+    def settings_api_save() -> Any:
+        from . import settings
+
+        body = _json_body()
+        result = settings.save(body.get("changes") or {}, clear=body.get("clear") or [])
+        return jsonify({"ok": not result["errors"], **result, **settings.describe()})
+
     @app.get("/admin-assets/list-clamp.css")
     def admin_list_css() -> Response:
         return Response(LIST_VIEW_CSS, mimetype="text/css")
@@ -1937,7 +2363,7 @@ def create_storage_admin_app() -> Flask:
         name="Pageboygent",
         # Flask-Admin 2.x：基础模板通过主题指定；所有页面（含数据表的增删改查页）都套用 pb_master.html
         theme=Bootstrap4Theme(base_template="admin/pb_master.html"),
-        index_view=HomeView(url="/admin", endpoint="admin", name="Home"),
+        index_view=HomeView(url="/admin", endpoint="admin", name="主页"),
     )
 
     # 顶部导航：三个 AI 页面 + 数据库（看板）
@@ -1970,6 +2396,7 @@ def create_storage_admin_app() -> Flask:
         admin.add_view(view)
 
     def pb_top_nav(admin_view: Any) -> list[dict]:
+        # 主页不放进导航栏：点左上角的 “Pageboygent” 进入（pb_home_url）
         section = getattr(admin_view, "pb_section", "")
         return [{"label": view.name, "url": url_for(f"{view.endpoint}.index"),
                  "active": admin_view is view or (view is dashboard_view and section == "database")}
@@ -1986,7 +2413,7 @@ def create_storage_admin_app() -> Flask:
     app.jinja_env.globals.update(
         pb_top_nav=pb_top_nav,
         pb_db_nav=pb_db_nav,
-        pb_home_url=lambda: url_for("chat.index"),
+        pb_home_url=lambda: url_for("admin.index"),
     )
 
     @app.get("/")
@@ -2033,6 +2460,12 @@ def _start_heartbeat_worker() -> tuple[threading.Event, threading.Thread]:
             try:
                 storage.heart_beat()
                 rag.heart_beat()
+                try:
+                    from . import paper_feed
+
+                    paper_feed.heart_beat()  # 有自己的抓取间隔；出错不影响其他后台任务
+                except Exception as exc:
+                    print(f"paper_feed heart_beat failed: {exc}")
             except KeyboardInterrupt:
                 # 内部 embedding 任务收到关闭信号并已保存状态，安全退出循环
                 break

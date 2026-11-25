@@ -294,6 +294,12 @@
     .pb-chart .bar {
         fill: var(--pb-blue);
         transition: fill 80ms ease-in-out;
+        pointer-events: none; /* 柱子画在感应区上面；不让它挡住鼠标，悬停柱子本身也能显示提示 */
+    }
+
+    .pb-chart .peak-text,
+    .pb-chart .axis-text {
+        pointer-events: none;
     }
 
     .pb-chart .hit:hover + .bar,

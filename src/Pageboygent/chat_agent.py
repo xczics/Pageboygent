@@ -38,7 +38,8 @@ CHAT_SYSTEM_PROMPT = """
 部分还有主题总结与精读笔记。库内文献绝大多数为英文。
 
 ## 工具
-- search_summaries(query, mode): 检索每篇文献的 AI 快速总结（bm25 相关度 / keywords 布尔匹配），最快定位文献。
+- search_summaries(query, mode, sources): 检索预生成的 AI 总结与笔记（快速总结、主题总结、精读笔记；bm25 相关度 / keywords 布尔匹配），
+  最快定位文献；精读笔记信息最密，适合回答方法、参数、具体结论类问题。
 - search_fulltext_bm25(query) / search_fulltext_semantic(query) / search_fulltext_keywords(expression):
   原文切块的 BM25、向量语义、精确子串（区分大小写）检索。
 - read_paper_notes(paper_id): 读某篇文献的 AI 总结与笔记。
