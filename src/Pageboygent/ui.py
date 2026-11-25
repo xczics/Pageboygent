@@ -16,7 +16,8 @@ from typing import Any, Mapping, Sequence
 import webbrowser
 
 from flask import Flask, Response, flash, jsonify, redirect, request, url_for
-from flask_admin import Admin, AdminIndexView, expose
+from flask_admin import Admin, AdminIndexView, BaseView, expose
+from flask_admin.theme import Bootstrap4Theme
 from flask_admin.actions import action
 from flask_admin.contrib.peewee import ModelView
 from markupsafe import Markup, escape
@@ -27,7 +28,7 @@ except Exception:  # pragma: no cover - optional dependency fallback
     _markdown_render_impl = None
 
 from .config import get_config
-from .storage import BaseModel, Paper, Theme, ThemePaper, TracedCollection
+from .storage import BaseModel, MDStatus, Paper, PDFStatus, Theme, ThemePaper, TracedCollection
 from . import storage
 from . import rag
 from . import write_queue
@@ -643,7 +644,20 @@ def _same_form_value(a: object, b: object) -> bool:
     return (a if a != "" else None) == (b if b != "" else None)
 
 
-class AdminModelView(ModelView):
+class DatabaseSectionMixin:
+    """属于"数据库"分区的页面：不出现在顶部导航，只从数据库的二级菜单进入。"""
+
+    pb_section = "database"
+
+    def is_visible(self) -> bool:
+        return False
+
+    def pb_index_url(self) -> str:
+        # 不能用 get_url(".index_view")：Flask 会相对“当前请求的页面”解析，而不是相对这个视图
+        return url_for(f"{self.endpoint}.index_view")  # type: ignore[attr-defined]
+
+
+class AdminModelView(DatabaseSectionMixin, ModelView):
     """所有写操作（增/改/删）都作为 quick 任务提交到 write_queue，由 heartbeat 线程执行（空闲时，或 heart_beat 内的 checkpoint 插队）。"""
 
     extra_css = ["/admin-assets/list-clamp.css"]
@@ -991,7 +1005,7 @@ class ThemePaperModelView(AdminModelView):
     }
 
 
-class MinerUTaskModelView(ModelView):
+class MinerUTaskModelView(DatabaseSectionMixin, ModelView):
     """MinerU API PDF->MD 任务（mineru_tasks.db）。只读视图 + Retry / Fallback to manual 两个操作。
 
     这里直接写 mineru_tasks.db、不走 write_queue：该库与 pageboygent.db 分离，
@@ -1353,21 +1367,404 @@ def _build_session_context(tab: str) -> str:
     return session_id
 
 
-class RagSearchAdminIndexView(AdminIndexView):
-    @expose("/", methods=("GET", "POST"))
-    def index(self):
-        active_tab = (request.values.get("tab") or "chat").strip().lower()
-        if active_tab not in {"chat", "rag", "lit"}:
-            active_tab = "chat"
+class HomeView(AdminIndexView):
+    """/admin/：默认进入 AI 对话；兼容旧的 ?tab=chat|lit|rag 链接。"""
 
+    def is_visible(self) -> bool:
+        return False
+
+    @expose("/")
+    def index(self):
+        target = {"lit": "litsearch.index", "rag": "rag.index"}.get((request.args.get("tab") or "").lower(), "chat.index")
+        params = {k: v for k, v in request.args.items() if k != "tab"}
+        return redirect(url_for(target, **params))
+
+
+class AgentPageView(BaseView):
+    """AI 功能页面（对话 / 文献检索 / RAG 搜索），共用 rag_home.html。"""
+
+    pb_section = "ai"
+    tab = "chat"
+
+    @expose("/")
+    def index(self):
         context = {
-            "active_tab": active_tab,
+            "active_tab": self.tab,
             **_build_rag_search_context(),
-            "chat_session_id": _build_session_context("chat") if active_tab == "chat" else "",
-            "lit_session_id": _build_session_context("lit") if active_tab == "lit" else "",
+            "chat_session_id": _build_session_context("chat") if self.tab == "chat" else "",
+            "lit_session_id": _build_session_context("lit") if self.tab == "lit" else "",
+            "review_project_id": (request.args.get("review_project") or "") if self.tab == "review" else "",
         }
         return self.render("admin/rag_home.html", **context)
-    
+
+
+class ChatPageView(AgentPageView):
+    tab = "chat"
+
+
+class LitSearchPageView(AgentPageView):
+    tab = "lit"
+
+
+class RagPageView(AgentPageView):
+    tab = "rag"
+
+
+class ReviewPageView(AgentPageView):
+    tab = "review"
+
+
+# ---------------------------------------------------------------------------
+# AI 综述（review_pipeline）
+# ---------------------------------------------------------------------------
+
+_REVIEW_STAGE_KEYS = {"plan": "规划", "final": "最终综述"}
+
+
+def _review_stage_label(key: str | None) -> str:
+    if not key:
+        return ""
+    if key.startswith("notes:"):
+        return "精读 · " + key.split(":", 1)[1]
+    if key.startswith("review:"):
+        return "子课题综述 · " + key.split(":", 1)[1]
+    return _REVIEW_STAGE_KEYS.get(key, key)
+
+
+def _review_state_payload(project_id: str) -> dict:
+    from . import lit_search, review_pipeline
+
+    store = review_pipeline.get_store()
+    project = store.load(project_id)
+    status = store.status(project_id, project)
+    model = project["model"]
+    base = store.project_dir(project_id)
+    plan = project.get("plan") or {}
+    progress = project.get("progress", {})
+
+    subtopics = []
+    notes_done = notes_total = reviews_done = 0
+    for topic in plan.get("subtopics", []):
+        topic_notes = progress.get("notes", {}).get(topic["dir"], {})
+        papers = []
+        for pid in topic["pids"]:
+            meta = project["papers"].get(str(pid), {})
+            note_path = f"subtopics/{topic['dir']}/notes/P{pid}.md"
+            state = "done" if (base / note_path).exists() else topic_notes.get(str(pid), "pending")
+            notes_total += 1
+            notes_done += state == "done"
+            papers.append({"pid": pid, "cite": f"{meta.get('first_author') or 'Unknown'} ({meta.get('year') or 'n.d.'})",
+                           "title": meta.get("title", ""), "status": state, "path": note_path})
+        review_path = f"subtopics/{topic['dir']}/review.md"
+        review_state = "done" if (base / review_path).exists() else progress.get("reviews", {}).get(topic["dir"], "pending")
+        reviews_done += review_state == "done"
+        subtopics.append({"index": topic["index"], "label": topic["label"], "dir": topic["dir"],
+                          "summary": topic.get("subprojectsummary", ""), "papers": papers,
+                          "review_status": review_state, "review_path": review_path})
+
+    final_path = "final/review.md"
+    final_text = store.read_document(project_id, final_path)
+    running_stage = project.get("stage") if status == "running" else None
+
+    imported = bool(project.get("imported"))
+
+    def _stage(key: str, done: bool, detail: str) -> dict:
+        state = "done" if done else ("running" if running_stage == key else "pending")
+        if status == "error" and project.get("stage") == key and not done:
+            state = "error"
+        if imported and not done:
+            # 历史导入：旧流程没有这一步，或只留下了部分产物
+            state, detail = ("done", detail) if detail else ("skipped", "旧流程无此步")
+        return {"key": key, "label": review_pipeline.STAGE_LABELS[key], "state": state, "detail": detail}
+
+    stages = [
+        _stage("collect", bool(project.get("papers")),
+               f"{len(project.get('papers', {}))} 篇可用 · {len(project.get('excluded', []))} 篇排除" if project.get("papers") else ""),
+        _stage("plan", bool(plan), f"{len(subtopics)} 个子课题" if plan else ""),
+        _stage("notes", bool(plan) and notes_total > 0 and notes_done == notes_total,
+               (f"{notes_done} / {notes_total}" + (f"（缺 {notes_total - notes_done} 篇）"
+                                                  if imported and notes_done < notes_total else "")) if plan else ""),
+        _stage("reviews", bool(plan) and reviews_done == len(subtopics) and bool(subtopics),
+               f"{reviews_done} / {len(subtopics)}" if plan else ""),
+        _stage("final", final_text is not None, "已完成" if final_text else ""),
+    ]
+
+    # Token 仪表：整个项目 + 当前（或最近）阶段
+    usage = project.get("usage", {})
+    breakdowns = {key: lit_search.usage_breakdown(value, model) for key, value in usage.items()}
+    current_key = project.get("current_stage_key") or (list(usage)[-1] if usage else None)
+    current = None
+    if current_key and current_key in breakdowns:
+        current = {**breakdowns[current_key], "question": _review_stage_label(current_key),
+                   "status": "running" if status == "running" else "done", "model": model, "turn_index": 0}
+    usage_panel = {
+        "current": current,
+        "session": {**lit_search.merge_breakdowns(list(breakdowns.values())), "turn_count": len(breakdowns)},
+        "rates": lit_search.price_table(get_config("model_name_cheap")),
+        "pro_rates": lit_search.price_table(get_config("model_name_professional")),
+    }
+    return {
+        "ok": True,
+        "project": {
+            "id": project_id, "name": project["name"], "topic": project["topic"], "collections": project["collections"],
+            "model": model, "use_pro": project.get("use_pro"), "status": status, "error": project.get("error", ""),
+            "created_at": project.get("created_at", "")[:16].replace("T", " "),
+            "stages": stages, "subtopics": subtopics, "excluded": project.get("excluded", []),
+            "plan_warnings": plan.get("warnings", []),
+            "imported": bool(project.get("imported")),
+            "source_note": project.get("source_note", ""),
+            # 附件：原始规划文件等（只列出确实存在的）
+            "attachments": [a for a in ([{"label": "规划（模型原始输出）", "path": "plan/plan.xml"}]
+                                        + project.get("attachments", []))
+                            if store.read_document(project_id, a["path"]) is not None],
+            "final": {"path": final_path, "html": str(_render_markdown_html(final_text)) if final_text else ""},
+            "trace": project.get("trace", [])[-200:],
+        },
+        "usage_panel": usage_panel,
+        "projects": store.list_projects(),
+    }
+
+
+class DatabaseDashboardView(BaseView):
+    """数据库 → 看板。"""
+
+    pb_section = "database"
+
+    def pb_index_url(self) -> str:
+        return url_for(f"{self.endpoint}.index")
+
+    @expose("/")
+    def index(self):
+        return self.render("admin/pb_dashboard.html", stats=_dashboard_stats())
+
+
+# ---------------------------------------------------------------------------
+# 数据看板
+# ---------------------------------------------------------------------------
+
+def _count(query) -> int:
+    try:
+        return int(query.count())
+    except Exception as exc:  # pragma: no cover - 看板不应因为某个统计失败而整页报错
+        print(f"[dashboard] count failed: {exc}")
+        return 0
+
+
+def _ai_usage_summary(limit_recent: int = 6) -> dict:
+    """累计 AI 花费与最近会话（对话 + 文献检索）。只读会话文件，不读体积较大的 .agent.json。"""
+    from . import chat_agent, lit_search
+
+    totals = {"tokens": 0, "cost": 0.0, "turns": 0, "sessions": {"chat": 0, "lit": 0}, "unpriced": 0,
+              "by_kind": {"chat": {"tokens": 0, "cost": 0.0}, "lit": {"tokens": 0, "cost": 0.0}}}
+    recent: list[dict] = []
+    stores = {"chat": chat_agent.get_chat_store(), "lit": lit_search.get_store()}
+    for kind, store in stores.items():
+        for path in store.directory.glob("*.json"):
+            session_id = lit_search.safe_session_id(path.stem)
+            if not session_id:
+                continue
+            try:
+                session = json.loads(path.read_text(encoding="utf-8"))
+            except (OSError, json.JSONDecodeError):
+                continue
+            turns = session.get("turns", [])
+            if not turns:
+                continue
+            totals["sessions"][kind] += 1
+            for turn in turns:
+                stats = (turn.get("result") or {}).get("stats") or {}
+                usage = turn.get("usage") or stats.get("usage")
+                if not usage:
+                    continue
+                model = turn.get("model") or stats.get("model") or (
+                    get_config("model_name_professional") if turn.get("use_pro") else get_config("model_name_cheap"))
+                breakdown = lit_search.usage_breakdown(usage, model)
+                totals["tokens"] += breakdown["total_tokens"]
+                totals["by_kind"][kind]["tokens"] += breakdown["total_tokens"]
+                totals["turns"] += 1
+                if breakdown["cost"] is None:
+                    totals["unpriced"] += 1
+                else:
+                    totals["cost"] += breakdown["cost"]["total"]
+                    totals["by_kind"][kind]["cost"] += breakdown["cost"]["total"]
+            endpoint = "chat.index" if kind == "chat" else "litsearch.index"
+            recent.append({
+                "kind": kind,
+                "kind_label": "对话" if kind == "chat" else "文献检索",
+                "title": turns[0].get("question", "")[:60],
+                "turns": len(turns),
+                "mtime": path.stat().st_mtime,
+                "updated": datetime.fromtimestamp(path.stat().st_mtime).strftime("%m-%d %H:%M"),
+                "url": url_for(endpoint, **{f"{kind}_session": session_id}),
+            })
+    recent.sort(key=lambda item: item["mtime"], reverse=True)
+    totals["recent"] = recent[:limit_recent]
+    return totals
+
+
+def _ai_spend() -> dict:
+    """AI 花费 = 对话/文献检索的会话用量 + 用量账本（总结、精读、综述流水线等）。"""
+    from . import llm_usage
+
+    sessions = _ai_usage_summary()
+    ledger = llm_usage.summarize()
+    parts = [
+        {"label": "AI 对话", "tokens": sessions["by_kind"]["chat"]["tokens"], "cost": sessions["by_kind"]["chat"]["cost"]},
+        {"label": "AI 文献检索", "tokens": sessions["by_kind"]["lit"]["tokens"], "cost": sessions["by_kind"]["lit"]["cost"]},
+    ] + [{"label": e["category"], "tokens": e["tokens"], "cost": e["cost"]} for e in ledger["categories"]]
+    parts = [part for part in parts if part["tokens"]]
+    total_cost = sum(part["cost"] for part in parts)
+    for part in parts:
+        part["pct"] = round(100.0 * part["cost"] / total_cost, 1) if total_cost else 0.0
+    parts.sort(key=lambda part: part["cost"], reverse=True)
+    return {
+        **sessions,
+        "cost": total_cost,
+        "tokens": sum(part["tokens"] for part in parts),
+        "unpriced": sessions["unpriced"] + ledger["unpriced_calls"],
+        "parts": parts,
+        "ledger_since": ledger["since"],
+    }
+
+
+def _year_histogram(years: list[int], start: int = 1990) -> dict:
+    """出版年份分布：start 之前合并为一根"更早"的柱子。"""
+    if not years:
+        return {"bars": [], "max": 0}
+    last = max(years)
+    counts: dict[int, int] = {}
+    earlier = 0
+    for year in years:
+        if year < start:
+            earlier += 1
+        else:
+            counts[year] = counts.get(year, 0) + 1
+    bars = ([{"label": f"{start} 年以前", "short": "更早", "value": earlier, "year": None}] if earlier else [])
+    bars += [{"label": f"{year} 年", "short": str(year), "value": counts.get(year, 0), "year": year}
+             for year in range(start, last + 1)]
+    peak = max(bars, key=lambda bar: bar["value"])
+    return {"bars": bars, "max": peak["value"], "peak": peak, "total": len(years)}
+
+
+def _dashboard_stats() -> dict:
+    from .note_storage import NoteRecord
+
+    total = _count(Paper.select())
+    has_pdf = _count(PDFStatus.select().where((PDFStatus.has_pdf_locally == True) | (PDFStatus.has_pdf_in_zotero == True)))  # noqa: E712
+    has_md = _count(MDStatus.select().where(MDStatus.has_md_locally == True))  # noqa: E712
+    has_summary = _count(Paper.select().where(Paper.quick_summary.is_null(False)))
+    try:
+        embedded = _count(rag.EmbedStatus.select().where(rag.EmbedStatus.status == rag.EmbedStatus.STATUS_DONE))
+        embedding_backlog = _count(rag.EmbedStatus.select().where(rag.EmbedStatus.status != rag.EmbedStatus.STATUS_DONE))
+        chunks = int(rag.DBcollection.count())
+    except Exception as exc:  # pragma: no cover
+        print(f"[dashboard] rag stats failed: {exc}")
+        embedded, embedding_backlog, chunks = 0, 0, 0
+
+    def _pct(value: int) -> float:
+        return round(100.0 * value / total, 1) if total else 0.0
+
+    pipeline = [
+        {"label": "已追踪", "hint": "Zotero 中被追踪的文献", "value": total},
+        {"label": "有 PDF", "hint": "本地或 Zotero 中已有 PDF", "value": has_pdf},
+        {"label": "全文 Markdown", "hint": "PDF 已转换为可检索的全文", "value": has_md},
+        {"label": "AI 快速总结", "hint": "已生成 quick summary", "value": has_summary},
+        {"label": "已入向量库", "hint": "原文已切块并写入 RAG 向量库", "value": embedded},
+    ]
+    for step in pipeline:
+        step["pct"] = _pct(step["value"])
+
+    pdf_waiting = _count(PDFStatus.select().where(
+        (PDFStatus.pdf_require_submitted == True) & (PDFStatus.has_pdf_in_zotero == False)))  # noqa: E712
+    md_converting = _count(MDStatus.select().where(
+        (MDStatus.pdf_2_md_submitted == True) & (MDStatus.has_md_locally == False)))  # noqa: E712
+    summary_waiting = _count(Paper.select().join(MDStatus).where(
+        (MDStatus.has_md_locally == True) & Paper.quick_summary.is_null(True)))  # noqa: E712
+    mineru_failed = _count(MinerUTask.select().where(MinerUTask.state == "failed"))
+    mineru_active = _count(MinerUTask.select().where(MinerUTask.state.not_in(["done", "failed"])))
+    notes_unsynced = _count(NoteRecord.select().where(NoteRecord.needs_sync == True))  # noqa: E712
+    queue_pending = write_queue.pending_count()
+
+    def _item(label: str, value: int, severity_if_any: str, hint: str, url: str | None = None) -> dict:
+        return {"label": label, "value": value, "severity": severity_if_any if value else "good", "hint": hint, "url": url}
+
+    pending = [
+        _item("PDF 待获取", pdf_waiting, "warning", "已加入 PDF 需求集合，等待在 Zotero 中补充 PDF",
+              url_for("pdfstatus.index_view")),
+        _item("MinerU 失败任务", mineru_failed, "critical", "PDF→Markdown 转换失败，可在 MinerU 任务中重试",
+              url_for("mineru_tasks.index_view")),
+        _item("笔记待同步", notes_unsynced, "warning", "本地生成的笔记尚未写回 Zotero"),
+        _item("全文转换中", md_converting + mineru_active, "info", "PDF→Markdown 转换任务进行中",
+              url_for("mineru_tasks.index_view")),
+        _item("等待生成 AI 总结", summary_waiting, "info", "全文就绪后约 10 天自动生成 quick summary"),
+        _item("向量库待入库", embedding_backlog, "info", "等待切块、筛选并写入向量库"),
+        _item("写入队列", queue_pending, "info", "网页端提交、等待后台执行的写操作"),
+    ]
+    attention = sum(1 for item in pending if item["severity"] in {"warning", "critical"})
+
+    themes = []
+    for theme in Theme.select().order_by(Theme.name):
+        papers = _count(ThemePaper.select().where(ThemePaper.theme == theme))
+        done = _count(ThemePaper.select().where(
+            (ThemePaper.theme == theme) & ThemePaper.theme_specific_summary.is_null(False)))
+        themes.append({"name": theme.name, "papers": papers, "done": done,
+                       "pct": round(100.0 * done / papers, 1) if papers else 0.0,
+                       "url": url_for("theme.details_view", id=theme.id)})
+    themes.sort(key=lambda t: t["papers"], reverse=True)
+    theme_papers = sum(t["papers"] for t in themes)
+    theme_done = sum(t["done"] for t in themes)
+
+    collections = list(TracedCollection.select())
+    last_traced = max((c.last_traced_at for c in collections if c.last_traced_at), default=None)
+
+    recent_papers = []
+    paper_rows = list(Paper.select().order_by(Paper.id.desc()).limit(8))
+    pdf_map = {row.paper_id: row for row in PDFStatus.select().where(PDFStatus.paper.in_([p.id for p in paper_rows]))}
+    md_map = {row.paper_id: row for row in MDStatus.select().where(MDStatus.paper.in_([p.id for p in paper_rows]))}
+    try:
+        embedded_ids = {row.paper_id for row in rag.EmbedStatus.select(rag.EmbedStatus.paper_id).where(
+            (rag.EmbedStatus.status == rag.EmbedStatus.STATUS_DONE) & rag.EmbedStatus.paper_id.in_([p.id for p in paper_rows]))}
+    except Exception:  # pragma: no cover
+        embedded_ids = set()
+    for paper in paper_rows:
+        pdf, md = pdf_map.get(paper.id), md_map.get(paper.id)
+        recent_papers.append({
+            "id": paper.id,
+            "cite": f"{paper.first_author or 'Unknown'} ({paper.year or 'n.d.'})",
+            "title": paper.title,
+            "url": url_for("paper.details_view", id=paper.id),
+            "steps": [
+                ("PDF", bool(pdf and (pdf.has_pdf_locally or pdf.has_pdf_in_zotero))),
+                ("全文", bool(md and md.has_md_locally)),
+                ("总结", bool(paper.quick_summary)),
+                ("向量库", paper.id in embedded_ids),
+            ],
+        })
+
+    years = [int(p.year) for p in Paper.select(Paper.year).where(Paper.year.is_null(False))
+             if 1900 < int(p.year) <= datetime.now().year + 1]
+    return {
+        "total": total,
+        "complete": embedded,
+        "chunks": chunks,
+        "pipeline": pipeline,
+        "pending": pending,
+        "attention": attention,
+        "themes": themes,
+        "theme_papers": theme_papers,
+        "theme_done": theme_done,
+        "theme_pct": round(100.0 * theme_done / theme_papers, 1) if theme_papers else 0.0,
+        "collections": len(collections),
+        "last_traced": last_traced.strftime("%Y-%m-%d") if last_traced else None,
+        "notes": _count(NoteRecord.select()),
+        "notes_unsynced": notes_unsynced,
+        "recent_papers": recent_papers,
+        "years": _year_histogram(years),
+        "ai": _ai_spend(),
+        "generated_at": datetime.now().strftime("%Y-%m-%d %H:%M"),
+    }
+
+
 @dataclass(frozen=True)
 class BindTarget:
     host: str
@@ -1434,6 +1831,99 @@ def create_storage_admin_app() -> Flask:
     _register_agent_api("chat", "/admin-api/chat", "请输入问题后再发送。")
     _register_agent_api("lit", "/admin-api/litsearch", "请输入检索需求。")
 
+    # ---- AI 综述 ----
+    def _review_store():
+        from . import review_pipeline
+
+        return review_pipeline.get_store()
+
+    def _review_id(raw: Any) -> str | None:
+        from . import review_pipeline
+
+        return review_pipeline.safe_project_id(str(raw or ""))
+
+    @app.get("/admin-api/review/collections")
+    def review_api_collections() -> Any:
+        return jsonify({"ok": True, "collections": _review_store().backend.collection_names()})
+
+    @app.post("/admin-api/review/preview")
+    def review_api_preview() -> Any:
+        payload = request.get_json(silent=True) or {}
+        names = [str(n) for n in payload.get("collections") or [] if str(n).strip()]
+        if not names:
+            return jsonify({"ok": False, "error": "请至少选择一个 Collection。"}), 400
+        backend = _review_store().backend
+        try:
+            keys = list(dict.fromkeys(k for name in names for k in backend.collection_keys(name)))
+        except Exception as exc:
+            return jsonify({"ok": False, "error": f"读取 Zotero Collection 失败：{exc}"}), 502
+        found = backend.papers_by_keys(keys)
+        usable = sum(1 for meta in found.values() if meta["md_path"])
+        return jsonify({"ok": True, "items": len(keys), "usable": usable,
+                        "no_fulltext": len(found) - usable, "untracked": len(keys) - len(found)})
+
+    @app.post("/admin-api/review/create")
+    def review_api_create() -> Any:
+        payload = request.get_json(silent=True) or {}
+        names = [str(n).strip() for n in payload.get("collections") or [] if str(n).strip()]
+        topic = str(payload.get("topic") or "").strip()
+        if not names or not topic:
+            return jsonify({"ok": False, "error": "请选择 Collection 并填写综述主题。"}), 400
+        store = _review_store()
+        project_id = store.create(name=str(payload.get("name") or ""), collections=names, topic=topic,
+                                  use_pro=_as_bool(payload.get("use_pro")))
+        store.start(project_id)
+        return jsonify(_review_state_payload(project_id))
+
+    @app.get("/admin-api/review/state")
+    def review_api_state() -> Any:
+        project_id = _review_id(request.args.get("project_id"))
+        if project_id is None:
+            return jsonify({"ok": True, "project": None, "projects": _review_store().list_projects(),
+                            "usage_panel": None})
+        try:
+            return jsonify(_review_state_payload(project_id))
+        except FileNotFoundError:
+            return jsonify({"ok": False, "error": "项目不存在。"}), 404
+
+    @app.post("/admin-api/review/resume")
+    def review_api_resume() -> Any:
+        project_id = _review_id((request.get_json(silent=True) or {}).get("project_id"))
+        if project_id is None:
+            return jsonify({"ok": False, "error": "project_id 无效。"}), 400
+        try:
+            _review_store().start(project_id)
+        except RuntimeError as exc:
+            return jsonify({"ok": False, "error": str(exc)}), 409
+        return jsonify(_review_state_payload(project_id))
+
+    @app.post("/admin-api/review/cancel")
+    def review_api_cancel() -> Any:
+        project_id = _review_id((request.get_json(silent=True) or {}).get("project_id"))
+        if project_id is None:
+            return jsonify({"ok": False, "error": "project_id 无效。"}), 400
+        _review_store().cancel(project_id)
+        return jsonify(_review_state_payload(project_id))
+
+    @app.get("/admin-api/review/doc")
+    def review_api_doc() -> Any:
+        project_id = _review_id(request.args.get("project_id"))
+        path = str(request.args.get("path") or "")
+        text = _review_store().read_document(project_id, path) if project_id else None
+        if text is None:
+            return jsonify({"ok": False, "error": "文档不存在或尚未生成。"}), 404
+        if request.args.get("download") == "1":
+            from urllib.parse import quote
+
+            project = _review_store().load(project_id)
+            filename = f"{project['slug']}-{Path(path).stem}.md"
+            response = Response(text, mimetype="text/markdown; charset=utf-8")
+            response.headers["Content-Disposition"] = f"attachment; filename*=UTF-8''{quote(filename)}"
+            return response
+        # 笔记开头的 <!-- P# · 作者 (年份) · 标题 --> 是给文件读者看的说明，网页上不显示
+        text = re.sub(r"\A\s*<!--.*?-->\s*", "", text, flags=re.S)
+        return jsonify({"ok": True, "path": path, "html": str(_render_markdown_html(text))})
+
     @app.get("/admin-assets/list-clamp.css")
     def admin_list_css() -> Response:
         return Response(LIST_VIEW_CSS, mimetype="text/css")
@@ -1444,28 +1934,60 @@ def create_storage_admin_app() -> Flask:
 
     admin = Admin(
         app,
-        name="Pageboygent Storage",
-        index_view=RagSearchAdminIndexView(url="/admin", endpoint="admin", name="Home"),
+        name="Pageboygent",
+        # Flask-Admin 2.x：基础模板通过主题指定；所有页面（含数据表的增删改查页）都套用 pb_master.html
+        theme=Bootstrap4Theme(base_template="admin/pb_master.html"),
+        index_view=HomeView(url="/admin", endpoint="admin", name="Home"),
     )
 
-    # Register every Peewee model declared under BaseModel so all storage tables
-    # get a CRUD view without manually maintaining model lists.
+    # 顶部导航：三个 AI 页面 + 数据库（看板）
+    top_views = [
+        ChatPageView(name="AI 对话", endpoint="chat", url="/admin/chat"),
+        LitSearchPageView(name="AI 文献检索", endpoint="litsearch", url="/admin/litsearch"),
+        ReviewPageView(name="AI 综述", endpoint="review", url="/admin/review"),
+        RagPageView(name="RAG 搜索", endpoint="rag", url="/admin/rag"),
+        DatabaseDashboardView(name="数据库", endpoint="database", url="/admin/database"),
+    ]
+    for view in top_views:
+        admin.add_view(view)
+    dashboard_view = top_views[-1]
+
+    # 数据库的二级菜单（按这个顺序）；其余 BaseModel 子类自动追加在后面，保证新表也有 CRUD 页面
+    db_views: list[Any] = [
+        PaperModelView(Paper, name="文献"),
+        ThemeModelView(Theme, name="主题"),
+        ThemePaperModelView(ThemePaper, name="主题-文献"),
+        TracedCollectionModelView(TracedCollection, name="追踪集合"),
+        AdminModelView(PDFStatus, name="PDF 状态"),
+        AdminModelView(MDStatus, name="全文状态"),
+    ]
+    known = {view.model for view in db_views}
     for model in sorted(BaseModel.__subclasses__(), key=lambda m: m.__name__):
-        if model is Paper:
-            admin.add_view(PaperModelView(model))
-            continue
-        if model is Theme:
-            admin.add_view(ThemeModelView(model))
-            continue
-        if model is ThemePaper:
-            admin.add_view(ThemePaperModelView(model))
-            continue
-        if model is TracedCollection:
-            admin.add_view(TracedCollectionModelView(model))
-            continue
-        else:
-            admin.add_view(AdminModelView(model))
-    admin.add_view(MinerUTaskModelView(MinerUTask, name="MinerU Tasks", endpoint="mineru_tasks"))
+        if model not in known:
+            db_views.append(AdminModelView(model))
+    db_views.append(MinerUTaskModelView(MinerUTask, name="MinerU 任务", endpoint="mineru_tasks"))
+    for view in db_views:
+        admin.add_view(view)
+
+    def pb_top_nav(admin_view: Any) -> list[dict]:
+        section = getattr(admin_view, "pb_section", "")
+        return [{"label": view.name, "url": url_for(f"{view.endpoint}.index"),
+                 "active": admin_view is view or (view is dashboard_view and section == "database")}
+                for view in top_views]
+
+    def pb_db_nav(admin_view: Any) -> list[dict]:
+        items = [{"label": "看板", "url": dashboard_view.pb_index_url(), "active": admin_view is dashboard_view,
+                  "count": None}]
+        for view in db_views:
+            items.append({"label": view.name, "url": view.pb_index_url(), "active": admin_view is view,
+                          "count": _count(view.model.select())})
+        return items
+
+    app.jinja_env.globals.update(
+        pb_top_nav=pb_top_nav,
+        pb_db_nav=pb_db_nav,
+        pb_home_url=lambda: url_for("chat.index"),
+    )
 
     @app.get("/")
     def index_redirect():

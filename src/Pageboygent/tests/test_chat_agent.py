@@ -103,7 +103,7 @@ def test_chat_page_and_api_use_workstation_store(tmp_path, monkeypatch):
     store = LitSearchSessionStore(directory=tmp_path / "chat_sessions", agent_factory=FakeChat)
     monkeypatch.setattr(chat_agent, "_chat_store", store)
     client = ui.create_storage_admin_app().test_client()
-    page = client.get("/admin/?tab=chat").get_data(as_text=True)
+    page = client.get("/admin/chat/").get_data(as_text=True)
     assert 'id="chat-root"' in page and "pbAgentView" in page and "history_hash" not in page
     sid = client.post("/admin-api/chat/send", json={"question": "你好"}).get_json()["session_id"]
     for _ in range(100):

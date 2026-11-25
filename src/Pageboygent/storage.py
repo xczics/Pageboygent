@@ -527,7 +527,7 @@ class ThemePaper(BaseModel):
                     _write_queue_checkpoint()
                 # 检查quick_summary是否存在，如果不存在，生成quick_summary
                 if not paper.quick_summary:
-                    paper.quick_summary = summary_paper_for_themes(md_path, get_summary_sys_prompt())
+                    paper.quick_summary = summary_paper_for_themes(md_path, get_summary_sys_prompt(), category="快速总结")
                     paper.save()
                     note_saved = note_storage.save_note(str(paper.key_in_zotero), paper.quick_summary, tags=[ai_tag, summary_tag])
                     paper.save()
@@ -557,7 +557,7 @@ class ThemePaper(BaseModel):
                 paper = tp.paper
                 md_path = paper.md_status.get().check_md_locally() #type: ignore
                 assert Path.exists(Path(md_path)), "The MD file has not been found, although the MD status is marked as having MD locally"
-                paper.quick_summary = summary_paper_for_themes(md_path, get_summary_sys_prompt())
+                paper.quick_summary = summary_paper_for_themes(md_path, get_summary_sys_prompt(), category="快速总结")
                 paper.save()
                 note_saved = note_storage.save_note(str(paper.key_in_zotero), paper.quick_summary, tags=[ai_tag, summary_tag])
                 paper.save()

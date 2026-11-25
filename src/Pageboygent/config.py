@@ -509,6 +509,18 @@ def _initialize_default_configs() -> None:
     default=400000,
     description="Max characters of one paper's full text sent to the deep-reading sub-agent (reference list is stripped first; longer texts are truncated)",
     )
+    register_config(
+    "review_pipeline_concurrency",
+    type_=int,
+    default=3,
+    description="Review pipeline: number of papers read (detailed notes) in parallel",
+    )
+    register_config(
+    "review_pipeline_max_output_tokens",
+    type_=int,
+    default=32768,
+    description="Review pipeline: max output tokens per LLM call (planning, notes, reviews, final review)",
+    )
     # LLM 费率（元 / 百万 tokens），用于前端预估费用。默认值为 DeepSeek-V4.1-Flash 高峰时段费率。
     for _tier, _label, _defaults in (
         ("cheap", "model_name_cheap", (0.04, 2.0, 8.0)),

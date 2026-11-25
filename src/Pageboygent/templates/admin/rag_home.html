@@ -2,24 +2,13 @@
 
 {% block body %}
 <div class="container-fluid page-home-wrap {% if active_tab in ('chat', 'lit') %}chat-active{% endif %}">
-    <ul class="nav nav-tabs home-tabs" role="tablist">
-        <li role="presentation" class="{% if active_tab == 'chat' %}active{% endif %}">
-            <a href="{{ url_for('admin.index', tab='chat') }}">AI 对话</a>
-        </li>
-        <li role="presentation" class="{% if active_tab == 'rag' %}active{% endif %}">
-            <a href="{{ url_for('admin.index', tab='rag') }}">RAG 搜索</a>
-        </li>
-        <li role="presentation" class="{% if active_tab == 'lit' %}active{% endif %}">
-            <a href="{{ url_for('admin.index', tab='lit') }}">AI 文献检索</a>
-        </li>
-    </ul>
 
     {% if active_tab == 'lit' %}
     <div class="lit-shell" id="lit-root" data-session-id="{{ lit_session_id }}">
         <aside class="chat-col lit-sessions-col">
             <div class="col-title-row">
                 <strong>检索会话</strong>
-                <a class="btn btn-default btn-xs" href="{{ url_for('admin.index', tab='lit', lit_new='1') }}">新建</a>
+                <a class="btn btn-default btn-xs" href="{{ url_for('litsearch.index', lit_new='1') }}">新建</a>
             </div>
             <div class="session-list" id="lit-session-list"></div>
         </aside>
@@ -63,7 +52,7 @@
         <aside class="chat-col lit-sessions-col">
             <div class="col-title-row">
                 <strong>对话列表</strong>
-                <a class="btn btn-default btn-xs" href="{{ url_for('admin.index', tab='chat', chat_new='1') }}">新建</a>
+                <a class="btn btn-default btn-xs" href="{{ url_for('chat.index', chat_new='1') }}">新建</a>
             </div>
             <div class="session-list" id="chat-session-list"></div>
         </aside>
@@ -102,14 +91,51 @@
     </div>
     {% endif %}
 
+    {% if active_tab == 'review' %}
+    <div class="lit-shell" id="review-root" data-project-id="{{ review_project_id }}">
+        <aside class="chat-col lit-sessions-col">
+            <div class="col-title-row">
+                <strong>综述项目</strong>
+                <a class="btn btn-default btn-xs" href="{{ url_for('review.index', review_new='1') }}">新建</a>
+            </div>
+            <div class="session-list" id="review-project-list"></div>
+        </aside>
+
+        <section class="chat-col lit-main-col">
+            <div class="col-title-row">
+                <strong>AI 综述</strong>
+                <span class="session-hash">规划 → 逐篇精读 → 子课题综述 → 最终综述；参考文献只用所选 Collection 内的文献，书目信息来自 Zotero</span>
+            </div>
+            <div id="review-error-wrap"></div>
+            <div class="dialog-log" id="review-main"></div>
+        </section>
+
+        <aside class="chat-col lit-usage-col">
+            <div class="col-title-row">
+                <strong>Token 仪表</strong>
+                <span class="session-hash">按高峰时段费率预估</span>
+            </div>
+            <div class="lit-usage-panel tok-root" id="review-usage-panel">
+                <div class="empty-tip">开始综述后，这里会实时显示 token 消耗与预估费用。</div>
+            </div>
+        </aside>
+    </div>
+    <div class="rv-viewer" id="review-viewer" hidden>
+        <div class="rv-viewer-card">
+            <div class="rv-viewer-head"><strong id="review-viewer-title"></strong>
+                <span><a href="#" id="review-viewer-download">下载 .md</a> · <a href="#" id="review-viewer-close">关闭</a></span></div>
+            <div class="rv-viewer-body snippet" id="review-viewer-body"></div>
+        </div>
+    </div>
+    {% endif %}
+
     {% if active_tab == 'rag' %}
     <div class="card rag-panel">
         <div class="card-header">
             <strong>RAG 搜索</strong>
         </div>
         <div class="card-body">
-            <form method="get" action="{{ url_for('admin.index') }}" class="form-inline rag-form">
-                <input type="hidden" name="tab" value="rag">
+            <form method="get" action="{{ url_for('rag.index') }}" class="form-inline rag-form">
                 <textarea name="q" class="form-control" placeholder="输入问题或检索关键词...">{{ query }}</textarea>
                 <input type="number" min="1" max="50" name="top_k" value="{{ top_k }}" class="form-control rag-topk">
                 <button type="submit" class="btn btn-primary">开始检索</button>
@@ -161,10 +187,6 @@
         margin-right: calc(50% - 50vw);
         padding-left: 10px;
         padding-right: 10px;
-    }
-
-    .home-tabs {
-        margin-bottom: 10px;
     }
 
     .chat-shell {
@@ -512,7 +534,7 @@
         display: grid;
         grid-template-columns: 240px minmax(460px, 1fr) 300px;
         gap: 10px;
-        height: calc(100vh - 170px);
+        height: calc(100vh - 92px);
         min-height: 560px;
         overflow: hidden;
     }
@@ -932,6 +954,54 @@
         font-size: 12px;
     }
 
+    /* ---- AI 综述 ---- */
+    .rv-form label.rv-label { display: block; font-size: 13px; font-weight: 700; margin: 14px 0 6px 0; }
+    .rv-form .rv-help { font-size: 12px; color: #6b7280; font-weight: 400; margin-left: 6px; }
+    .rv-collections { max-height: 220px; overflow: auto; border: 1px solid #e5e7eb; border-radius: 8px; padding: 6px 8px; }
+    .rv-collections label { display: flex; gap: 6px; align-items: center; font-size: 13px; margin: 2px 0; font-weight: 400; }
+    .rv-models { display: flex; gap: 10px; }
+    .rv-models label { flex: 1; border: 1px solid #e5e7eb; border-radius: 10px; padding: 8px 10px; font-weight: 400; cursor: pointer; }
+    .rv-models label.checked { border-color: #2a78d6; background: #f3f8fe; }
+    .rv-models small { display: block; color: #6b7280; }
+    .rv-actions { display: flex; gap: 8px; align-items: center; margin-top: 14px; flex-wrap: wrap; }
+    .rv-preview { font-size: 12px; color: #374151; }
+    .rv-head { display: flex; justify-content: space-between; gap: 10px; align-items: flex-start; }
+    .rv-head h3 { font-size: 17px; font-weight: 700; margin: 0 0 4px 0; }
+    .rv-meta { font-size: 12px; color: #6b7280; }
+    .rv-status { display: inline-block; font-size: 11px; font-weight: 700; padding: 1px 8px; border-radius: 999px; background: #f1f5f9; color: #475569; }
+    .rv-status.running { background: #e6f4ff; color: #075985; }
+    .rv-status.done { background: #dcfce7; color: #166534; }
+    .rv-status.error { background: #fee2e2; color: #991b1b; }
+    .rv-status.cancelled { background: #fef3c7; color: #92400e; }
+    .rv-steps { display: grid; grid-template-columns: repeat(5, 1fr); gap: 6px; margin: 14px 0; }
+    .rv-step { border: 1px solid #e5e7eb; border-radius: 10px; padding: 8px 10px; background: #fff; }
+    .rv-step .rv-step-label { font-size: 12px; font-weight: 700; color: #374151; }
+    .rv-step .rv-step-detail { font-size: 11px; color: #6b7280; margin-top: 2px; min-height: 15px; }
+    .rv-step.done { border-color: #cfe9cf; background: #f6fbf6; }
+    .rv-step.running { border-color: #9ec5f4; background: #f3f8fe; }
+    .rv-step.error { border-color: #fecaca; background: #fef2f2; }
+    .rv-step.skipped { border-style: dashed; background: #fafafa; }
+    .rv-step.skipped .rv-step-label { color: #9ca3af; }
+    .rv-chip.missing { border-style: dashed; color: #9ca3af; }
+    .rv-step .rv-dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 5px; background: #cbd5e1; }
+    .rv-step.done .rv-dot { background: #0ca30c; }
+    .rv-step.running .rv-dot { background: #2a78d6; animation: tok-pulse 1.2s ease-in-out infinite; }
+    .rv-step.error .rv-dot { background: #d03b3b; }
+    .rv-topic > summary { font-size: 13px; font-weight: 700; }
+    .rv-topic-summary { font-size: 12px; color: #4b5563; margin: 6px 0; }
+    .rv-chips { display: flex; flex-wrap: wrap; gap: 5px; margin: 6px 0; }
+    .rv-chip { font-size: 11px; border: 1px solid #e5e7eb; border-radius: 999px; padding: 1px 8px; color: #6b7280; background: #fff; cursor: default; }
+    .rv-chip.done { border-color: #cfe9cf; background: #f0f9f0; color: #0a6e0a; cursor: pointer; }
+    .rv-chip.running { border-color: #9ec5f4; background: #f3f8fe; color: #1c5cab; }
+    .rv-chip.error { border-color: #fecaca; background: #fef2f2; color: #991b1b; }
+    .rv-link { font-size: 12px; cursor: pointer; }
+    .rv-final-body { max-height: none; }
+    .rv-viewer { position: fixed; inset: 0; background: rgba(15, 23, 42, 0.45); z-index: 1050; display: flex; align-items: center; justify-content: center; }
+    .rv-viewer[hidden] { display: none; }
+    .rv-viewer-card { width: min(980px, 92vw); max-height: 88vh; background: #fff; border-radius: 14px; display: flex; flex-direction: column; overflow: hidden; }
+    .rv-viewer-head { display: flex; justify-content: space-between; padding: 10px 14px; border-bottom: 1px solid #e5e7eb; font-size: 13px; }
+    .rv-viewer-body { padding: 14px 18px; overflow: auto; }
+
     .lit-chat-answer {
         max-width: 100%;
     }
@@ -1091,83 +1161,21 @@
 </script>
 <script defer src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-chtml.js"></script>
 <script>
-    // 文献检索与 AI 对话共用的视图引擎：会话列表、轮询、工具链、Token 仪表、折叠与引用跳转
-    function pbAgentView(cfg) {
-        const root = document.getElementById(cfg.prefix + '-root');
-        if (!root) {
-            return;
-        }
-        const form = document.getElementById(cfg.prefix + '-form');
-        const logNode = document.getElementById(cfg.prefix + '-log');
-        const errorWrap = document.getElementById(cfg.prefix + '-error-wrap');
-        const sessionList = document.getElementById(cfg.prefix + '-session-list');
-        const runningTag = document.getElementById(cfg.prefix + '-running-tag');
-        const sendBtn = document.getElementById(cfg.prefix + '-send-btn');
-        const questionInput = form.querySelector('textarea[name="question"]');
-        const useProInput = form.querySelector('input[name="use_pro"]');
-        const emptyTipHtml = logNode.innerHTML;
-        const indexUrl = '{{ url_for("admin.index") }}';
-
-        let sessionId = root.dataset.sessionId || '';
-        let lastSignature = null;
-        let pollTimer = null;
-        const openTraces = new Set();
-        const openPapers = new Set();
-
-        function esc(value) {
-            return String(value == null ? '' : value)
-                .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
-                .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
-        }
-
-        function safeHref(url, allowed) {
-            if (!url) { return ''; }
-            return allowed.some((prefix) => String(url).startsWith(prefix)) ? esc(url) : '';
-        }
-
-        function renderError(message) {
-            errorWrap.innerHTML = message
-                ? '<div class="alert alert-danger" style="margin: 8px 10px 0 10px;">' + esc(message) + '</div>'
-                : '';
-        }
-
-        function renderSessions(sessions) {
-            sessionList.innerHTML = (sessions || []).map((s) => {
-                const active = s.id === sessionId ? ' active' : '';
-                const href = indexUrl + '?tab=' + cfg.tab + '&' + cfg.tab + '_session=' + encodeURIComponent(s.id);
-                return '<a class="session-item' + active + '" href="' + href + '">' +
-                    '<div class="session-title">' + esc(s.title) + '</div>' +
-                    '<div class="session-meta">' + esc(s.updated_at) + ' · ' + Number(s.turn_count || 0) + ' 轮</div></a>';
-            }).join('') || '<div class="empty-tip" style="padding:6px;">' + cfg.labels.noSessions + '</div>';
-        }
-
-        const TRACE_ICONS = { thought: '💭', tool: '🔍', system: 'ℹ️', warn: '⚠️' };
-
-        function fmtTokens(n) {
-            n = Number(n || 0);
-            return n >= 10000 ? (n / 1000).toFixed(1) + 'k' : String(n);
-        }
-
-        function renderUsage(usage) {
-            if (!usage || !usage.llm_calls) { return ''; }
-            const hit = Number(usage.cache_hit_tokens || 0);
-            const prompt = Number(usage.prompt_tokens || 0);
-            const hitRate = prompt ? Math.round(hit / prompt * 100) : 0;
-            return '<div class="lit-usage" title="本轮检索的 LLM token 消耗（累计）">' +
-                '<span>🪙 总计 ' + fmtTokens(usage.total_tokens) + ' tokens</span>' +
-                '<span>输入 ' + fmtTokens(prompt) + '（缓存命中 ' + fmtTokens(hit) + ' · ' + hitRate + '%）</span>' +
-                '<span>输出 ' + fmtTokens(usage.completion_tokens) + '</span>' +
-                '<span>LLM 调用 ' + Number(usage.llm_calls) + ' 次</span></div>';
-        }
-
+    // ---------------- Token 仪表（AI 对话 / 文献检索 / 综述流水线共用）----------------
+    function pbUsagePanel(node, labels) {
         // ---------------- Token 仪表 ----------------
         const TOK_PARTS = [
             { key: 'input_cache_hit', cls: 'hit', color: 'var(--tok-hit)', label: '输入 · 缓存命中' },
             { key: 'input_cache_miss', cls: 'miss', color: 'var(--tok-miss)', label: '输入 · 缓存未命中' },
             { key: 'output', cls: 'out', color: 'var(--tok-out)', label: '输出' },
         ];
-        const usagePanel = document.getElementById(cfg.prefix + '-usage-panel');
+        const usagePanel = node;
         let tokTooltip = null;
+        const L = Object.assign({ session: '当前对话', unit: '轮', current: '当前一轮', showIndex: true,
+                                  usageEmpty: '开始后，这里会实时显示 token 消耗与预估费用。' }, labels || {});
+        const esc = (value) => String(value == null ? '' : value)
+            .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+            .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
 
         function fmtInt(n) {
             return Number(n || 0).toLocaleString('en-US');
@@ -1226,20 +1234,20 @@
             const cur = panel.current;
             const ses = panel.session;
             if (!cur || !ses || !ses.llm_calls) {
-                usagePanel.innerHTML = '<div class="empty-tip">' + cfg.labels.usageEmpty + '</div>' + renderRates(panel);
+                usagePanel.innerHTML = '<div class="empty-tip">' + L.usageEmpty + '</div>' + renderRates(panel);
                 return;
             }
             const running = cur.status === 'running';
             const curCost = cur.cost ? cur.cost.total : null;
             // 唯一的 hero 数字：当前对话预估费用
             let html = '<section class="tok-scope">' +
-                '<div class="tok-scope-title"><span>当前对话</span><span>' + Number(ses.turn_count || 0) + ' 轮 · ' + fmtInt(ses.llm_calls) + ' 次 LLM 调用</span></div>' +
+                '<div class="tok-scope-title"><span>' + L.session + '</span><span>' + Number(ses.turn_count || 0) + ' ' + L.unit + ' · ' + fmtInt(ses.llm_calls) + ' 次 LLM 调用</span></div>' +
                 '<div class="tok-hero">' + fmtYuan(ses.cost ? ses.cost.total : null, true) + '</div>' +
                 '<div class="tok-total-line">' + fmtInt(ses.total_tokens) + ' tokens' +
-                (ses.unpriced_turns ? ' · ' + ses.unpriced_turns + ' 轮使用的模型未配置费率，未计入费用' : '') + '</div>' +
+                (ses.unpriced_turns ? ' · ' + ses.unpriced_turns + ' ' + L.unit + '使用的模型未配置费率，未计入费用' : '') + '</div>' +
                 renderTokBar(ses, true) + renderTokTable(ses) + renderHitMeter(ses) + '</section>';
             html += '<section class="tok-scope">' +
-                '<div class="tok-scope-title"><span>' + (running ? '<span class="tok-running-dot"></span>' + cfg.labels.current + '（进行中）' : cfg.labels.current + '（第 ' + cur.turn_index + ' 轮）') + '</span>' +
+                '<div class="tok-scope-title"><span>' + (running ? '<span class="tok-running-dot"></span>' + L.current + '（进行中）' : L.current + (L.showIndex ? '（第 ' + cur.turn_index + ' ' + L.unit + '）' : '')) + '</span>' +
                 '<span>' + fmtInt(cur.llm_calls) + ' 次调用</span></div>' +
                 '<div class="tok-scope-sub" title="' + esc(cur.question) + '">' + esc(cur.question) + '</div>' +
                 '<div class="tok-stat">' + (cur.cost ? fmtYuan(curCost, true) : '<span style="font-size:14px;font-weight:400;">该模型未配置费率</span>') + '</div>' +
@@ -1272,6 +1280,79 @@
             });
             usagePanel.addEventListener('mouseleave', () => { tokTooltip.style.display = 'none'; });
         }
+        return { render: renderUsagePanel };
+    }
+
+    // 文献检索与 AI 对话共用的视图引擎：会话列表、轮询、工具链、Token 仪表、折叠与引用跳转
+    function pbAgentView(cfg) {
+        const root = document.getElementById(cfg.prefix + '-root');
+        if (!root) {
+            return;
+        }
+        const form = document.getElementById(cfg.prefix + '-form');
+        const logNode = document.getElementById(cfg.prefix + '-log');
+        const errorWrap = document.getElementById(cfg.prefix + '-error-wrap');
+        const sessionList = document.getElementById(cfg.prefix + '-session-list');
+        const runningTag = document.getElementById(cfg.prefix + '-running-tag');
+        const sendBtn = document.getElementById(cfg.prefix + '-send-btn');
+        const questionInput = form.querySelector('textarea[name="question"]');
+        const useProInput = form.querySelector('input[name="use_pro"]');
+        const emptyTipHtml = logNode.innerHTML;
+        const indexUrl = cfg.pageUrl;
+
+        let sessionId = root.dataset.sessionId || '';
+        let lastSignature = null;
+        let pollTimer = null;
+        const openTraces = new Set();
+        const openPapers = new Set();
+
+        function esc(value) {
+            return String(value == null ? '' : value)
+                .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+                .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+        }
+
+        function safeHref(url, allowed) {
+            if (!url) { return ''; }
+            return allowed.some((prefix) => String(url).startsWith(prefix)) ? esc(url) : '';
+        }
+
+        function renderError(message) {
+            errorWrap.innerHTML = message
+                ? '<div class="alert alert-danger" style="margin: 8px 10px 0 10px;">' + esc(message) + '</div>'
+                : '';
+        }
+
+        function renderSessions(sessions) {
+            sessionList.innerHTML = (sessions || []).map((s) => {
+                const active = s.id === sessionId ? ' active' : '';
+                const href = indexUrl + '?tab=' + cfg.tab + '&' + cfg.tab + '_session=' + encodeURIComponent(s.id);
+                return '<a class="session-item' + active + '" href="' + href + '">' +
+                    '<div class="session-title">' + esc(s.title) + '</div>' +
+                    '<div class="session-meta">' + esc(s.updated_at) + ' · ' + Number(s.turn_count || 0) + ' 轮</div></a>';
+            }).join('') || '<div class="empty-tip" style="padding:6px;">' + cfg.labels.noSessions + '</div>';
+        }
+
+        const TRACE_ICONS = { thought: '💭', tool: '🔍', system: 'ℹ️', warn: '⚠️' };
+
+        function fmtTokens(n) {
+            n = Number(n || 0);
+            return n >= 10000 ? (n / 1000).toFixed(1) + 'k' : String(n);
+        }
+
+        function renderUsage(usage) {
+            if (!usage || !usage.llm_calls) { return ''; }
+            const hit = Number(usage.cache_hit_tokens || 0);
+            const prompt = Number(usage.prompt_tokens || 0);
+            const hitRate = prompt ? Math.round(hit / prompt * 100) : 0;
+            return '<div class="lit-usage" title="本轮检索的 LLM token 消耗（累计）">' +
+                '<span>🪙 总计 ' + fmtTokens(usage.total_tokens) + ' tokens</span>' +
+                '<span>输入 ' + fmtTokens(prompt) + '（缓存命中 ' + fmtTokens(hit) + ' · ' + hitRate + '%）</span>' +
+                '<span>输出 ' + fmtTokens(usage.completion_tokens) + '</span>' +
+                '<span>LLM 调用 ' + Number(usage.llm_calls) + ' 次</span></div>';
+        }
+
+        const usagePanelView = pbUsagePanel(document.getElementById(cfg.prefix + '-usage-panel'), cfg.labels);
 
         function toolChainSummary(steps) {
             // 按工具类别统计调用次数，例如：检索 AI 总结 ×2 → 原文 BM25 ×3 → 回读原文 ×4
@@ -1514,7 +1595,7 @@
             sessionId = state.session_id;
             renderSessions(state.sessions);
             renderTurns(state.turns || []);
-            renderUsagePanel(state.usage_panel);
+            usagePanelView.render(state.usage_panel);
             renderRunning(Boolean(state.is_running));
             if (state.is_running) { schedulePoll(); }
         }
@@ -1636,17 +1717,245 @@
 
     if (document.getElementById('lit-root')) {
         pbAgentView({
-            prefix: 'lit', tab: 'lit', api: '/admin-api/litsearch',
+            prefix: 'lit', tab: 'lit', api: '/admin-api/litsearch', pageUrl: '{{ url_for("litsearch.index") }}',
             labels: { noSessions: '暂无检索记录。', usageEmpty: '开始检索后，这里会实时显示 token 消耗与预估费用。',
                       current: '当前检索', button: '检索', busyButton: '检索中...', empty: '请输入检索需求。' },
         });
     }
     if (document.getElementById('chat-root')) {
         pbAgentView({
-            prefix: 'chat', tab: 'chat', api: '/admin-api/chat', traceFirst: true, renderResult: renderChatResult,
+            prefix: 'chat', tab: 'chat', api: '/admin-api/chat', pageUrl: '{{ url_for("chat.index") }}', traceFirst: true, renderResult: renderChatResult,
             labels: { noSessions: '暂无对话。', usageEmpty: '开始对话后，这里会实时显示 token 消耗与预估费用。',
                       current: '当前一问', button: '发送', busyButton: '思考中...', empty: '请输入问题后再发送。' },
         });
     }
+</script>
+<script>
+    (function () {
+        const root = document.getElementById('review-root');
+        if (!root) { return; }
+        const main = document.getElementById('review-main');
+        const listNode = document.getElementById('review-project-list');
+        const errorWrap = document.getElementById('review-error-wrap');
+        const viewer = document.getElementById('review-viewer');
+        const pageUrl = '{{ url_for("review.index") }}';
+        const usage = pbUsagePanel(document.getElementById('review-usage-panel'), {
+            session: '整个项目', unit: '个阶段', current: '当前阶段', showIndex: false,
+            usageEmpty: '开始综述后，这里会实时显示 token 消耗与预估费用。',
+        });
+        const params = new URLSearchParams(window.location.search);
+        let projectId = params.get('review_new') === '1' ? '' : (root.dataset.projectId || '');
+        let pollTimer = null;
+        let lastSignature = null;
+        const openDetails = new Set();
+        let viewerPath = '';
+
+        const esc = (v) => String(v == null ? '' : v).replace(/&/g, '&amp;').replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+        const STATUS = { running: '运行中', done: '已完成', error: '出错', cancelled: '已停止', idle: '未开始' };
+
+        function renderError(message) {
+            errorWrap.innerHTML = message ? '<div class="alert alert-danger" style="margin: 8px 10px 0 10px;">' + esc(message) + '</div>' : '';
+        }
+
+        async function api(path, body) {
+            const resp = await fetch(path, body === undefined ? { credentials: 'same-origin' } : {
+                method: 'POST', credentials: 'same-origin', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body),
+            });
+            const data = await resp.json();
+            if (!resp.ok || !data.ok) { throw new Error(data.error || '请求失败'); }
+            return data;
+        }
+
+        function renderList(projects) {
+            listNode.innerHTML = (projects || []).map((p) => {
+                const active = p.id === projectId ? ' active' : '';
+                return '<a class="session-item' + active + '" href="' + pageUrl + '?review_project=' + encodeURIComponent(p.id) + '">' +
+                    '<div class="session-title">' + esc(p.name) + '</div>' +
+                    '<div class="session-meta"><span class="rv-status ' + esc(p.status) + '">' + esc(STATUS[p.status] || p.status) + '</span> ' +
+                    esc(p.updated_at) + '</div></a>';
+            }).join('') || '<div class="empty-tip" style="padding:6px;">还没有综述项目。</div>';
+        }
+
+        // ---------------- 新建表单 ----------------
+        async function renderForm() {
+            main.innerHTML = '<form class="rv-form" id="rv-form">' +
+                '<label class="rv-label">项目名称<span class="rv-help">可选，用于文件夹名与 Zotero 标签</span></label>' +
+                '<input class="form-control" name="name" placeholder="例如：Moon volatiles">' +
+                '<label class="rv-label">Collection(s)<span class="rv-help">包含子集合；只使用已被追踪且有全文的文献</span></label>' +
+                '<input class="form-control form-control-sm" id="rv-filter" placeholder="筛选 Collection…" style="margin-bottom:6px;">' +
+                '<div class="rv-collections" id="rv-collections"><div class="empty-tip">正在从 Zotero 读取 Collection…</div></div>' +
+                '<label class="rv-label">综述主题<span class="rv-help">写清楚综述要回答的问题、范围与侧重点</span></label>' +
+                '<textarea class="form-control" name="topic" rows="4" placeholder="例如：太阳系岩质星体中度挥发性元素亏损的现象与机制，侧重同位素证据与形成阶段的约束"></textarea>' +
+                '<label class="rv-label">写作模型</label>' +
+                '<div class="rv-models">' +
+                '<label class="checked"><input type="radio" name="model" value="flash" checked> Flash<small>便宜、快，适合先跑一版</small></label>' +
+                '<label><input type="radio" name="model" value="pro"> Pro<small>更强的规划与写作，费用更高</small></label></div>' +
+                '<div class="rv-actions"><button type="button" class="btn btn-default btn-sm" id="rv-preview-btn">预览文献数</button>' +
+                '<span class="rv-preview" id="rv-preview"></span>' +
+                '<button type="submit" class="btn btn-primary" style="margin-left:auto;">开始综述</button></div></form>';
+            const form = document.getElementById('rv-form');
+            form.querySelectorAll('input[name="model"]').forEach((radio) => radio.addEventListener('change', () => {
+                form.querySelectorAll('.rv-models label').forEach((l) => l.classList.toggle('checked', l.contains(form.querySelector('input[name="model"]:checked'))));
+            }));
+            const selected = () => Array.from(form.querySelectorAll('#rv-collections input:checked')).map((c) => c.value);
+            document.getElementById('rv-preview-btn').addEventListener('click', async () => {
+                const out = document.getElementById('rv-preview');
+                out.textContent = '正在统计…';
+                try {
+                    const d = await api('/admin-api/review/preview', { collections: selected() });
+                    out.innerHTML = '<strong>' + d.usable + '</strong> 篇可用（共 ' + d.items + ' 个条目；' + d.no_fulltext + ' 篇无全文，' + d.untracked + ' 个未被追踪）';
+                } catch (e) { out.textContent = e.message; }
+            });
+            form.addEventListener('submit', async (event) => {
+                event.preventDefault();
+                renderError('');
+                try {
+                    const d = await api('/admin-api/review/create', {
+                        name: form.name.value, topic: form.topic.value, collections: selected(),
+                        use_pro: form.querySelector('input[name="model"]:checked').value === 'pro',
+                    });
+                    projectId = d.project.id;
+                    window.history.replaceState(null, '', pageUrl + '?review_project=' + encodeURIComponent(projectId));
+                    applyState(d);
+                } catch (e) { renderError(e.message); }
+            });
+            try {
+                const d = await api('/admin-api/review/collections');
+                const box = document.getElementById('rv-collections');
+                box.innerHTML = d.collections.map((name) => '<label><input type="checkbox" value="' + esc(name) + '"> ' + esc(name) + '</label>').join('') ||
+                    '<div class="empty-tip">没有读取到 Collection（Zotero 是否在运行？）</div>';
+                document.getElementById('rv-filter').addEventListener('input', (ev) => {
+                    const q = ev.target.value.toLowerCase();
+                    box.querySelectorAll('label').forEach((l) => { l.style.display = l.textContent.toLowerCase().includes(q) ? '' : 'none'; });
+                });
+            } catch (e) { renderError(e.message); }
+        }
+
+        // ---------------- 项目视图 ----------------
+        function details(id, summary, body, cls) {
+            return '<details class="lit-fold ' + (cls || '') + '" id="' + esc(id) + '" data-remember="1"' + (openDetails.has(id) ? ' open' : '') + '>' +
+                '<summary>' + summary + '</summary>' + body + '</details>';
+        }
+
+        function renderProject(p) {
+            const running = p.status === 'running';
+            const canResume = !p.imported && (!running && p.status !== 'done' || p.stages.some((s) => s.state === 'error'));
+            let html = '<div class="lit-card"><div class="rv-head"><div><h3>' + esc(p.name) + '</h3>' +
+                '<div class="rv-meta">' + (p.imported ? '<span class="rv-status cancelled">历史记录（导入）</span> ' : '') +
+                '<span class="rv-status ' + esc(p.status) + '">' + esc(STATUS[p.status] || p.status) + '</span> · ' +
+                esc(p.model) + ' · ' + esc(p.collections.join('、')) + ' · 创建于 ' + esc(p.created_at) + '</div></div><div>' +
+                (running ? '<button class="btn btn-default btn-sm" data-act="cancel">停止</button>' : '') +
+                (canResume && !running ? '<button class="btn btn-primary btn-sm" data-act="resume">' + (p.status === 'done' ? '重试失败项' : '继续') + '</button>' : '') +
+                '</div></div><div class="rv-topic-summary" style="margin-top:8px;"><strong>主题：</strong>' + esc(p.topic) + '</div>' +
+                (p.error ? '<div class="alert alert-danger" style="margin:8px 0 0 0;">' + esc(p.error) + '</div>' : '') +
+                '<div class="rv-steps">' + p.stages.map((s) => '<div class="rv-step ' + esc(s.state) + '"><div class="rv-step-label"><span class="rv-dot"></span>' +
+                    esc(s.label) + '</div><div class="rv-step-detail">' + esc(s.detail) + '</div></div>').join('') + '</div>';
+            if (p.source_note) {
+                html += '<div class="rv-meta" style="margin:-4px 0 8px 0;">' + esc(p.source_note) + '</div>';
+            }
+            if (p.attachments && p.attachments.length) {
+                html += '<div class="rv-meta" style="margin:0 0 8px 0;">附件：' + p.attachments.map((a) =>
+                    '<a class="rv-link" data-path="' + esc(a.path) + '" data-title="' + esc(a.label) + '">' + esc(a.label) + '</a>').join(' · ') + '</div>';
+            }
+            if (p.final && p.final.html) {
+                html += '<div class="rv-actions" style="margin:0 0 6px 0;"><a class="btn btn-success btn-sm" href="/admin-api/review/doc?project_id=' + encodeURIComponent(p.id) +
+                    '&path=' + encodeURIComponent(p.final.path) + '&download=1">下载最终综述 (.md)</a></div>';
+            }
+            html += '</div>';
+
+            if (p.final && p.final.html) {
+                html += '<div class="lit-card"><h4>最终综述</h4>' + details('rv-' + p.id + '-final', '展开全文', '<div class="snippet rv-final-body">' + p.final.html + '</div>', 'lit-report') + '</div>';
+            }
+            if (p.subtopics.length) {
+                html += '<div class="lit-card"><h4>子课题（' + p.subtopics.length + '）</h4>' + p.subtopics.map((t) => {
+                    const done = t.papers.filter((x) => x.status === 'done').length;
+                    const chips = t.papers.map((x) => '<span class="rv-chip ' + esc(x.status) + '" data-path="' + esc(x.status === 'done' ? x.path : '') + '" data-title="' +
+                        esc(t.label + ' · ' + x.cite) + '" title="' + esc(x.title) + '">' + (x.status === 'done' ? '✓ ' : x.status === 'error' ? '✕ ' : x.status === 'running' ? '… ' : x.status === 'missing' ? '缺 ' : '○ ') + esc(x.cite) + '</span>').join('');
+                    const review = t.review_status === 'done'
+                        ? '<a class="rv-link" data-path="' + esc(t.review_path) + '" data-title="' + esc(t.label + ' · 子课题综述') + '">查看子课题综述 →</a>'
+                        : '<span class="rv-meta">子课题综述：' + esc({ running: '撰写中', error: '失败', pending: '待撰写' }[t.review_status] || t.review_status) + '</span>';
+                    return details('rv-' + p.id + '-t' + t.index, esc(t.index + '. ' + t.label) + ' <span class="rv-meta">精读 ' + done + ' / ' + t.papers.length + '</span>',
+                        '<div class="rv-topic-summary">' + esc(t.summary) + '</div><div class="rv-chips">' + chips + '</div>' + review, 'rv-topic');
+                }).join('') + '</div>';
+            }
+            const notices = (p.plan_warnings || []).map(esc);
+            if (p.excluded.length) {
+                notices.push(p.excluded.length + ' 篇被排除：' + p.excluded.slice(0, 20).map((e) => esc((e.title || e.key) + '（' + e.reason + '）')).join('；') + (p.excluded.length > 20 ? ' …' : ''));
+            }
+            if (notices.length) {
+                html += '<div class="lit-card">' + details('rv-' + p.id + '-notices', '规划与文献说明（' + notices.length + '）', '<div class="lit-warnings">' + notices.join('<br>') + '</div>', 'lit-more') + '</div>';
+            }
+            const icons = { thought: '💭', tool: '📄', system: 'ℹ️', warn: '⚠️' };
+            html += '<div class="lit-card">' + details('rv-' + p.id + '-trace', '运行日志（' + p.trace.length + '）' + (running && p.trace.length ? ' <span class="lit-latest">' + esc(p.trace[p.trace.length - 1].text) + '</span>' : ''),
+                '<ol class="lit-trace" style="font-size:12px;">' + p.trace.slice().reverse().map((t) => '<li class="kind-' + esc(t.kind) + '">' + (icons[t.kind] || '·') + ' ' + esc(t.at) + ' ' + esc(t.text) + '</li>').join('') + '</ol>', 'lit-trace') + '</div>';
+            main.innerHTML = html;
+            main.querySelectorAll('details[data-remember]').forEach((node) => node.addEventListener('toggle', () => {
+                if (node.open) { openDetails.add(node.id); } else { openDetails.delete(node.id); }
+            }));
+            if (window.MathJax && typeof window.MathJax.typesetPromise === 'function') { window.MathJax.typesetPromise([main]); }
+        }
+
+        function applyState(d) {
+            renderList(d.projects);
+            usage.render(d.usage_panel);
+            if (!d.project) { return; }
+            const signature = JSON.stringify([d.project.status, d.project.stages, d.project.subtopics.map((t) => [t.review_status, t.papers.map((x) => x.status)]), d.project.trace.length]);
+            if (signature !== lastSignature) {
+                lastSignature = signature;
+                renderProject(d.project);
+            }
+            if (d.project.status === 'running') { schedulePoll(); }
+        }
+
+        function schedulePoll() {
+            if (pollTimer) { return; }
+            pollTimer = window.setTimeout(async () => {
+                pollTimer = null;
+                try { applyState(await api('/admin-api/review/state?project_id=' + encodeURIComponent(projectId))); } catch (e) { schedulePoll(); }
+            }, 2000);
+        }
+
+        main.addEventListener('click', async (event) => {
+            const act = event.target.closest('[data-act]');
+            if (act) {
+                renderError('');
+                try { applyState(await api('/admin-api/review/' + act.dataset.act, { project_id: projectId })); } catch (e) { renderError(e.message); }
+                return;
+            }
+            const doc = event.target.closest('[data-path]');
+            if (doc && doc.dataset.path) {
+                event.preventDefault();
+                viewerPath = doc.dataset.path;
+                document.getElementById('review-viewer-title').textContent = doc.dataset.title || viewerPath;
+                const body = document.getElementById('review-viewer-body');
+                body.innerHTML = '<div class="empty-tip">加载中…</div>';
+                viewer.hidden = false;
+                try {
+                    const d = await api('/admin-api/review/doc?project_id=' + encodeURIComponent(projectId) + '&path=' + encodeURIComponent(viewerPath));
+                    body.innerHTML = d.html;
+                    if (window.MathJax && typeof window.MathJax.typesetPromise === 'function') { window.MathJax.typesetPromise([body]); }
+                } catch (e) { body.textContent = e.message; }
+            }
+        });
+        document.getElementById('review-viewer-close').addEventListener('click', (e) => { e.preventDefault(); viewer.hidden = true; });
+        document.getElementById('review-viewer-download').addEventListener('click', (e) => {
+            e.preventDefault();
+            window.location.href = '/admin-api/review/doc?project_id=' + encodeURIComponent(projectId) + '&path=' + encodeURIComponent(viewerPath) + '&download=1';
+        });
+        viewer.addEventListener('click', (e) => { if (e.target === viewer) { viewer.hidden = true; } });
+
+        (async () => {
+            try {
+                const d = await api('/admin-api/review/state' + (projectId ? '?project_id=' + encodeURIComponent(projectId) : ''));
+                applyState(d);
+                if (!projectId) { await renderForm(); }
+            } catch (e) {
+                renderError(e.message);
+                projectId = '';
+                await renderForm();
+            }
+        })();
+    })();
 </script>
 {% endblock %}

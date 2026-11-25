@@ -75,6 +75,11 @@ ds_url = get_config("ds_url")
 flash_name = get_config("model_name_cheap")
 pro_name = get_config("model_name_professional")
 client = OpenAI(api_key=ds_api_key, base_url=ds_url)
+def _record(category: str, model: str, response, ref: str | None) -> None:
+    from .llm_usage import record
+    record(category, model, getattr(response, "usage", None), ref)
+
+
 def ai_summary(md_path: str) -> str:
     with open(md_path, "r") as f:
         md_content = f.read()
@@ -93,10 +98,11 @@ def ai_summary(md_path: str) -> str:
         },
         max_tokens=4096,
     )
+    _record("快速总结", flash_name, response, md_path)
     assert response.choices[0].message.content is not None, "No content in response"
     return response.choices[0].message.content
 
-def summary_paper_for_themes(md_path: str, theme_prompt: str) -> str:
+def summary_paper_for_themes(md_path: str, theme_prompt: str, category: str = "主题总结") -> str:
     # this function is used to generate the summary for a paper under different themes
     # the theme_prompt will put in the end to have better cache performance.
     #print(f"summarizing paper in {md_path} for theme with prompt: {theme_prompt}")
@@ -117,6 +123,7 @@ def summary_paper_for_themes(md_path: str, theme_prompt: str) -> str:
         },
         max_tokens=16384,
     )
+    _record(category, flash_name, response, md_path)
     assert response.choices[0].message.content is not None, "No content in response"
     return response.choices[0].message.content
 
@@ -140,6 +147,7 @@ def summary_papers_for_theme(md_path: str, theme_prompt: str) -> str:
         },
         max_tokens=16384,
     )
+    _record("主题总结", flash_name, response, md_path)
     assert response.choices[0].message.content is not None, "No content in response"
     return response.choices[0].message.content
 
@@ -161,6 +169,7 @@ def detailed_note(md_path: str, sys_prompt: str, enhanced_prompt: str) -> Tuple[
         },
         max_tokens=24*1024,
     )
+    _record("精读笔记", pro_name, response, md_path)
     assert response.choices[0].message.content is not None, "No content in response"
     reasoning_content = getattr(response.choices[0].message, 'reasoning_content', None)
     reasoning_content = reasoning_content if reasoning_content is not None else ""
@@ -184,6 +193,7 @@ def review_note(detialed_notes_path: str, sys_prompt: str, enhanced_prompt: str)
         },
         max_tokens=24*1024,
     )
+    _record("子课题综述", pro_name, response, detialed_notes_path)
     assert response.choices[0].message.content is not None, "No content in response"
     reasoning_content = getattr(response.choices[0].message, 'reasoning_content', None)
     reasoning_content = reasoning_content if reasoning_content is not None else ""

@@ -1,0 +1,132 @@
+{% extends 'admin/base.html' %}
+{#
+  Pageboygent 的页面骨架：
+  - 顶部导航只有四项：AI 对话 / AI 文献检索 / RAG 搜索 / 数据库（由 pb_top_nav 提供）
+  - "数据库"下的看板与各数据表页面共用一条二级菜单（由 pb_db_nav 提供），数据表页面不出现在顶部导航
+#}
+
+{% block title %}{{ admin_view.name }} · Pageboygent{% endblock %}
+
+{% block head %}
+{{ super() }}
+<style>
+    .navbar .pb-brand {
+        font-weight: 700;
+        letter-spacing: 0.3px;
+    }
+
+    .navbar .pb-brand .pb-brand-mark {
+        display: inline-block;
+        width: 22px;
+        height: 22px;
+        line-height: 22px;
+        text-align: center;
+        border-radius: 6px;
+        background: #2a78d6;
+        color: #ffffff;
+        font-size: 12px;
+        margin-right: 6px;
+        vertical-align: 1px;
+    }
+
+    .navbar .nav-item.pb-top-item .nav-link {
+        padding-left: 14px;
+        padding-right: 14px;
+        border-radius: 8px;
+    }
+
+    .navbar .nav-item.pb-top-item.active .nav-link {
+        background: rgba(255, 255, 255, 0.12);
+        color: #ffffff;
+    }
+
+    .pb-subnav {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        gap: 4px;
+        margin: 2px 0 14px 0;
+        padding: 5px;
+        border: 1px solid #e5e7eb;
+        border-radius: 12px;
+        background: #ffffff;
+        box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04);
+    }
+
+    .pb-subnav a {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        padding: 6px 12px;
+        border-radius: 8px;
+        color: #374151;
+        font-size: 13px;
+        font-weight: 600;
+        text-decoration: none;
+        white-space: nowrap;
+    }
+
+    .pb-subnav a:hover {
+        background: #f1f5f9;
+        color: #111827;
+        text-decoration: none;
+    }
+
+    .pb-subnav a.active {
+        background: #eaf2fc;
+        color: #1c5cab;
+    }
+
+    .pb-subnav .pb-subnav-count {
+        font-size: 11px;
+        font-weight: 600;
+        color: #6b7280;
+        background: #f1f5f9;
+        border-radius: 999px;
+        padding: 0 7px;
+        font-variant-numeric: tabular-nums;
+    }
+
+    .pb-subnav a.active .pb-subnav-count {
+        background: #ffffff;
+        color: #1c5cab;
+    }
+
+    .pb-subnav .pb-subnav-sep {
+        width: 1px;
+        height: 20px;
+        background: #e5e7eb;
+        margin: 0 4px;
+    }
+</style>
+{% endblock %}
+
+{% block brand %}
+<a class="navbar-brand pb-brand" href="{{ pb_home_url() }}"><span class="pb-brand-mark">P</span>Pageboygent</a>
+{% endblock %}
+
+{% block main_menu %}
+<ul class="nav navbar-nav mr-auto">
+    {% for item in pb_top_nav(admin_view) %}
+    <li class="nav-item pb-top-item{% if item.active %} active{% endif %}">
+        <a class="nav-link" href="{{ item.url }}">{{ item.label }}</a>
+    </li>
+    {% endfor %}
+</ul>
+{% endblock %}
+
+{% block menu_links %}{% endblock %}
+
+{% block page_title %}
+{% if admin_view.pb_section == 'database' %}
+<nav class="pb-subnav" aria-label="数据库">
+    {% for item in pb_db_nav(admin_view) %}
+    <a href="{{ item.url }}" class="{% if item.active %}active{% endif %}"{% if item.active %} aria-current="page"{% endif %}>
+        {{ item.label }}
+        {% if item.count is not none %}<span class="pb-subnav-count">{{ '{:,}'.format(item.count) }}</span>{% endif %}
+    </a>
+    {% if loop.first %}<span class="pb-subnav-sep" aria-hidden="true"></span>{% endif %}
+    {% endfor %}
+</nav>
+{% endif %}
+{% endblock %}

@@ -1,0 +1,746 @@
+{% extends 'admin/master.html' %}
+
+{% block head %}
+{{ super() }}
+<style>
+    .pb-dash {
+        --pb-surface: #ffffff;
+        --pb-page: #f6f7f9;
+        --pb-line: #e5e7eb;
+        --pb-text: #0b0b0b;
+        --pb-text-2: #52514e;
+        --pb-muted: #8a8984;
+        --pb-blue: #2a78d6;          /* 序列色 450：柱子、进度条 */
+        --pb-blue-dark: #1c5cab;     /* 550：悬停 */
+        --pb-track: #e3edfa;         /* 同色系浅阶：进度条底轨 */
+        --pb-good: #0ca30c;
+        --pb-warning: #fab219;
+        --pb-critical: #d03b3b;
+        color: var(--pb-text);
+        font-variant-numeric: normal;
+        padding-bottom: 32px;
+    }
+
+    .pb-card {
+        background: var(--pb-surface);
+        border: 1px solid var(--pb-line);
+        border-radius: 14px;
+        padding: 16px 18px;
+        box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04);
+    }
+
+    .pb-card-title {
+        display: flex;
+        align-items: baseline;
+        justify-content: space-between;
+        gap: 10px;
+        margin: 0 0 12px 0;
+    }
+
+    .pb-card-title h3 {
+        font-size: 14px;
+        font-weight: 700;
+        margin: 0;
+        color: var(--pb-text);
+    }
+
+    .pb-card-title .pb-card-note {
+        font-size: 12px;
+        color: var(--pb-muted);
+    }
+
+    .pb-row {
+        display: grid;
+        gap: 14px;
+        margin-bottom: 14px;
+    }
+
+    .pb-row.two {
+        grid-template-columns: 1.15fr 1fr;
+    }
+
+    /* 网格子项默认 min-width:auto，长标题（nowrap）会把卡片撑出页面 */
+    .pb-row > * {
+        min-width: 0;
+    }
+
+    .pb-row.tiles {
+        grid-template-columns: repeat(4, 1fr);
+    }
+
+    /* ---- 概览 ---- */
+    .pb-hero {
+        display: flex;
+        align-items: flex-end;
+        justify-content: space-between;
+        gap: 20px;
+        background: linear-gradient(135deg, #ffffff 0%, #f3f8fe 100%);
+    }
+
+    .pb-hero-label {
+        font-size: 13px;
+        font-weight: 700;
+        color: var(--pb-text-2);
+    }
+
+    .pb-hero-value {
+        font-size: 56px;
+        line-height: 1.05;
+        font-weight: 750;
+        letter-spacing: -1px;
+        margin: 4px 0 6px 0;
+    }
+
+    .pb-hero-value small {
+        font-size: 18px;
+        font-weight: 600;
+        color: var(--pb-text-2);
+        letter-spacing: 0;
+        margin-left: 6px;
+    }
+
+    .pb-hero-sub {
+        font-size: 13px;
+        color: var(--pb-text-2);
+    }
+
+    .pb-hero-side {
+        text-align: right;
+        flex-shrink: 0;
+    }
+
+    .pb-health {
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+        padding: 7px 12px;
+        border-radius: 999px;
+        font-size: 13px;
+        font-weight: 700;
+        border: 1px solid var(--pb-line);
+        background: #ffffff;
+    }
+
+    .pb-health .pb-icon {
+        width: 20px;
+        height: 20px;
+        font-size: 12px;
+    }
+
+    .pb-generated {
+        margin-top: 8px;
+        font-size: 11px;
+        color: var(--pb-muted);
+    }
+
+    /* ---- 数字卡片 ---- */
+    .pb-tile-label {
+        font-size: 12px;
+        font-weight: 700;
+        color: var(--pb-text-2);
+    }
+
+    .pb-tile-value {
+        font-size: 28px;
+        font-weight: 750;
+        line-height: 1.15;
+        margin: 6px 0 4px 0;
+        letter-spacing: -0.3px;
+    }
+
+    .pb-tile-sub {
+        font-size: 12px;
+        color: var(--pb-muted);
+    }
+
+    .pb-tile a {
+        color: inherit;
+    }
+
+    /* ---- 进度条列表 ---- */
+    .pb-meters {
+        display: grid;
+        gap: 12px;
+    }
+
+    .pb-meter-head {
+        display: flex;
+        justify-content: space-between;
+        align-items: baseline;
+        gap: 10px;
+        font-size: 13px;
+    }
+
+    .pb-meter-name {
+        font-weight: 600;
+        color: var(--pb-text);
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+    }
+
+    .pb-meter-name a {
+        color: inherit;
+    }
+
+    .pb-meter-name .pb-hint {
+        font-weight: 400;
+        color: var(--pb-muted);
+        font-size: 12px;
+        margin-left: 6px;
+    }
+
+    .pb-meter-figure {
+        font-variant-numeric: tabular-nums;
+        color: var(--pb-text-2);
+        white-space: nowrap;
+    }
+
+    .pb-meter-figure strong {
+        color: var(--pb-text);
+    }
+
+    .pb-track {
+        height: 8px;
+        border-radius: 999px;
+        background: var(--pb-track);
+        margin-top: 5px;
+        overflow: hidden;
+    }
+
+    .pb-track > div {
+        height: 100%;
+        border-radius: 999px;
+        background: var(--pb-blue);
+    }
+
+    /* ---- 待处理 ---- */
+    .pb-status-list {
+        list-style: none;
+        margin: 0;
+        padding: 0;
+    }
+
+    .pb-status-list li {
+        display: grid;
+        grid-template-columns: 22px 1fr auto;
+        gap: 10px;
+        align-items: center;
+        padding: 8px 0;
+        border-top: 1px solid #f1f2f4;
+    }
+
+    .pb-status-list li:first-child {
+        border-top: none;
+    }
+
+    .pb-status-name {
+        font-size: 13px;
+        font-weight: 600;
+    }
+
+    .pb-status-name a {
+        color: inherit;
+    }
+
+    .pb-status-hint {
+        font-size: 12px;
+        color: var(--pb-muted);
+    }
+
+    .pb-ok-chips {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 5px;
+        margin-top: 5px;
+    }
+
+    .pb-status-value {
+        font-size: 15px;
+        font-weight: 700;
+        font-variant-numeric: tabular-nums;
+    }
+
+    .pb-icon {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        width: 22px;
+        height: 22px;
+        border-radius: 50%;
+        font-size: 12px;
+        font-weight: 800;
+        color: #ffffff;
+        line-height: 1;
+    }
+
+    .pb-icon.good { background: var(--pb-good); }
+    .pb-icon.warning { background: var(--pb-warning); color: #3b2a00; }
+    .pb-icon.critical { background: var(--pb-critical); }
+    .pb-icon.info { background: #eef0f3; color: #52514e; }
+
+    /* ---- 年份分布 ---- */
+    .pb-chart {
+        position: relative;
+    }
+
+    .pb-chart svg {
+        display: block;
+        width: 100%;
+        height: auto;
+        overflow: visible;
+    }
+
+    .pb-chart .bar {
+        fill: var(--pb-blue);
+        transition: fill 80ms ease-in-out;
+    }
+
+    .pb-chart .hit:hover + .bar,
+    .pb-chart .bar.is-hover {
+        fill: var(--pb-blue-dark);
+    }
+
+    .pb-chart .hit {
+        fill: transparent;
+        cursor: default;
+    }
+
+    .pb-chart .grid {
+        stroke: #eef0f3;
+        stroke-width: 1;
+    }
+
+    .pb-chart .axis-text {
+        fill: var(--pb-muted);
+        font-size: 11px;
+    }
+
+    .pb-chart .peak-text {
+        fill: var(--pb-text);
+        font-size: 12px;
+        font-weight: 700;
+    }
+
+    .pb-tooltip {
+        position: absolute;
+        pointer-events: none;
+        background: #0b0b0b;
+        color: #ffffff;
+        font-size: 12px;
+        line-height: 1.45;
+        padding: 5px 9px;
+        border-radius: 6px;
+        box-shadow: 0 4px 14px rgba(0, 0, 0, 0.18);
+        white-space: nowrap;
+        transform: translate(-50%, calc(-100% - 8px));
+        display: none;
+    }
+
+    .pb-table-toggle {
+        font-size: 12px;
+        margin-top: 8px;
+    }
+
+    .pb-table-toggle table {
+        font-size: 12px;
+        margin-top: 6px;
+        font-variant-numeric: tabular-nums;
+    }
+
+    .pb-table-toggle td,
+    .pb-table-toggle th {
+        padding: 1px 12px 1px 0;
+    }
+
+    /* ---- 最近加入 / 最近会话 ---- */
+    .pb-list {
+        list-style: none;
+        margin: 0;
+        padding: 0;
+    }
+
+    .pb-list li {
+        padding: 8px 0;
+        border-top: 1px solid #f1f2f4;
+    }
+
+    .pb-list li:first-child {
+        border-top: none;
+        padding-top: 0;
+    }
+
+    .pb-list .pb-item-title {
+        display: block;
+        font-size: 13px;
+        color: var(--pb-text);
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+    }
+
+    .pb-list .pb-item-title strong {
+        margin-right: 6px;
+    }
+
+    .pb-list .pb-item-meta {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 5px;
+        margin-top: 4px;
+        font-size: 11px;
+        color: var(--pb-muted);
+    }
+
+    .pb-step {
+        display: inline-flex;
+        align-items: center;
+        gap: 3px;
+        padding: 0 7px;
+        border-radius: 999px;
+        border: 1px solid var(--pb-line);
+        color: var(--pb-muted);
+        font-size: 11px;
+        line-height: 18px;
+    }
+
+    .pb-step.done {
+        border-color: #cfe9cf;
+        background: #f0f9f0;
+        color: #0a6e0a;
+    }
+
+    .pb-kind {
+        display: inline-block;
+        padding: 0 7px;
+        border-radius: 999px;
+        background: #eaf2fc;
+        color: #1c5cab;
+        font-weight: 700;
+        line-height: 18px;
+    }
+
+    .pb-kind.lit {
+        background: #fdf0e9;
+        color: #a4461c;
+    }
+
+    .pb-empty {
+        font-size: 13px;
+        color: var(--pb-muted);
+    }
+
+    @media (max-width: 992px) {
+        .pb-row.two,
+        .pb-row.tiles {
+            grid-template-columns: 1fr 1fr;
+        }
+
+        .pb-row.two {
+            grid-template-columns: 1fr;
+        }
+
+        .pb-hero {
+            flex-direction: column;
+            align-items: flex-start;
+        }
+
+        .pb-hero-side {
+            text-align: left;
+        }
+    }
+</style>
+{% endblock %}
+
+{% block body %}
+{% set s = stats %}
+<div class="pb-dash">
+
+    {# ---------------- 概览：唯一的主数字 ---------------- #}
+    <section class="pb-card pb-hero pb-row">
+        <div>
+            <div class="pb-hero-label">文献库</div>
+            <div class="pb-hero-value">{{ '{:,}'.format(s.total) }}<small>篇文献</small></div>
+            <div class="pb-hero-sub">
+                其中 <strong>{{ '{:,}'.format(s.complete) }}</strong> 篇已走完全流程、可被 AI 检索 ·
+                原文切块 <strong>{{ '{:,}'.format(s.chunks) }}</strong> 个 ·
+                {{ s.themes|length }} 个主题 · {{ s.collections }} 个追踪集合
+            </div>
+        </div>
+        <div class="pb-hero-side">
+            {% if s.attention %}
+            <span class="pb-health"><span class="pb-icon warning" aria-hidden="true">!</span>{{ s.attention }} 项需要处理</span>
+            {% else %}
+            <span class="pb-health"><span class="pb-icon good" aria-hidden="true">✓</span>一切正常</span>
+            {% endif %}
+            <div class="pb-generated">统计于 {{ s.generated_at }}</div>
+        </div>
+    </section>
+
+    {# ---------------- 数字卡片 ---------------- #}
+    <div class="pb-row tiles">
+        <section class="pb-card pb-tile">
+            <div class="pb-tile-label">主题总结</div>
+            <div class="pb-tile-value">{{ s.theme_pct }}%</div>
+            <div class="pb-tile-sub">{{ '{:,}'.format(s.theme_done) }} / {{ '{:,}'.format(s.theme_papers) }} 篇 · {{ s.themes|length }} 个主题</div>
+        </section>
+        <section class="pb-card pb-tile">
+            <div class="pb-tile-label">追踪集合</div>
+            <div class="pb-tile-value">{{ s.collections }}</div>
+            <div class="pb-tile-sub">{% if s.last_traced %}最近追踪 {{ s.last_traced }}{% else %}尚未手动追踪{% endif %}</div>
+        </section>
+        <section class="pb-card pb-tile">
+            <div class="pb-tile-label">AI 笔记</div>
+            <div class="pb-tile-value">{{ '{:,}'.format(s.notes) }}</div>
+            <div class="pb-tile-sub">{% if s.notes_unsynced %}{{ s.notes_unsynced }} 条待同步到 Zotero{% else %}已全部同步到 Zotero{% endif %}</div>
+        </section>
+        <section class="pb-card pb-tile">
+            <div class="pb-tile-label">AI 累计花费（预估）</div>
+            <div class="pb-tile-value">¥{{ '%.2f'|format(s.ai.cost) }}</div>
+            <div class="pb-tile-sub">
+                {{ '{:,.1f}'.format(s.ai.tokens / 1000000) }}M tokens · 含会话与总结/综述
+                {% if s.ai.unpriced %}<br>{{ s.ai.unpriced }} 次调用未配置费率，未计入{% endif %}
+            </div>
+        </section>
+    </div>
+
+    {# ---------------- 流水线 + 待处理 ---------------- #}
+    <div class="pb-row two">
+        <section class="pb-card">
+            <div class="pb-card-title">
+                <h3>处理流水线</h3>
+                <span class="pb-card-note">占全部 {{ '{:,}'.format(s.total) }} 篇的比例</span>
+            </div>
+            <div class="pb-meters">
+                {% for step in s.pipeline %}
+                <div>
+                    <div class="pb-meter-head">
+                        <span class="pb-meter-name">{{ step.label }}<span class="pb-hint">{{ step.hint }}</span></span>
+                        <span class="pb-meter-figure"><strong>{{ '{:,}'.format(step.value) }}</strong> · {{ step.pct }}%</span>
+                    </div>
+                    <div class="pb-track" role="meter" aria-valuemin="0" aria-valuemax="100" aria-valuenow="{{ step.pct }}"
+                        aria-label="{{ step.label }}"><div style="width: {{ step.pct }}%"></div></div>
+                </div>
+                {% endfor %}
+            </div>
+        </section>
+
+        <section class="pb-card">
+            <div class="pb-card-title">
+                <h3>待处理</h3>
+                <span class="pb-card-note">后台心跳会自动推进这些任务</span>
+            </div>
+            {% set open_items = s.pending|rejectattr('severity', 'equalto', 'good')|list %}
+            {% set ok_items = s.pending|selectattr('severity', 'equalto', 'good')|list %}
+            <ul class="pb-status-list">
+                {% for item in open_items %}
+                <li>
+                    {% if item.severity == 'critical' %}
+                    <span class="pb-icon critical" title="需要处理">✕</span>
+                    {% elif item.severity == 'warning' %}
+                    <span class="pb-icon warning" title="需要关注">!</span>
+                    {% else %}
+                    <span class="pb-icon info" title="进行中">…</span>
+                    {% endif %}
+                    <div>
+                        <div class="pb-status-name">{% if item.url %}<a href="{{ item.url }}">{{ item.label }}</a>{% else %}{{ item.label }}{% endif %}</div>
+                        <div class="pb-status-hint">{{ item.hint }}</div>
+                    </div>
+                    <span class="pb-status-value">{{ '{:,}'.format(item.value) }}</span>
+                </li>
+                {% endfor %}
+                {% if ok_items %}
+                <li>
+                    <span class="pb-icon good" title="正常">✓</span>
+                    <div>
+                        <div class="pb-status-name">{% if open_items %}其余 {{ ok_items|length }} 项正常{% else %}全部 {{ ok_items|length }} 项都正常{% endif %}</div>
+                        <div class="pb-ok-chips">
+                            {% for item in ok_items %}<span class="pb-step done" title="{{ item.hint }}">✓ {{ item.label }}</span>{% endfor %}
+                        </div>
+                    </div>
+                    <span class="pb-status-value">0</span>
+                </li>
+                {% endif %}
+            </ul>
+        </section>
+    </div>
+
+    {# ---------------- 出版年份分布 ---------------- #}
+    {% set h = s.years %}
+    <section class="pb-card pb-row">
+        <div class="pb-card-title">
+            <h3>出版年份分布</h3>
+            {% if h.bars %}<span class="pb-card-note">峰值 {{ h.peak.label }}：{{ h.peak.value }} 篇 · 共 {{ '{:,}'.format(h.total) }} 篇有年份</span>{% endif %}
+        </div>
+        {% if h.bars %}
+        {% set W = 1000 %}{% set H = 190 %}{% set top = 18 %}{% set bottom = 22 %}{% set left = 30 %}
+        {% set plot_h = H - top - bottom %}
+        {% set step = (W - left) / (h.bars|length) %}
+        {% set bw = [step - 3, 2]|max %}
+        {% set ymax = ((h.max / 10)|round(0, 'ceil') * 10) if h.max > 10 else 10 %}
+        <div class="pb-chart" id="pb-year-chart">
+            <svg viewBox="0 0 {{ W }} {{ H }}" role="img" aria-label="各出版年份的文献数量柱状图">
+                {% for frac in [0, 0.5, 1] %}
+                {% set gy = top + plot_h * (1 - frac) %}
+                <line class="grid" x1="{{ left }}" x2="{{ W }}" y1="{{ gy }}" y2="{{ gy }}"></line>
+                <text class="axis-text" x="{{ left - 6 }}" y="{{ gy + 4 }}" text-anchor="end">{{ (ymax * frac)|int }}</text>
+                {% endfor %}
+                {% for bar in h.bars %}
+                {% set x = left + step * loop.index0 + (step - bw) / 2 %}
+                {% set bh = (plot_h * bar.value / ymax) if bar.value else 0 %}
+                {% set y = top + plot_h - bh %}
+                {% set r = [4, bw / 2, bh]|min %}
+                <rect class="hit" x="{{ left + step * loop.index0 }}" y="{{ top }}" width="{{ step }}" height="{{ plot_h }}"
+                    data-label="{{ bar.label }}" data-value="{{ bar.value }}"></rect>
+                {% if bh > 0 %}
+                {# 只有顶部是 4px 圆角，底部贴着基线是直角 #}
+                <path class="bar" d="M{{ x }},{{ top + plot_h }} V{{ y + r }} Q{{ x }},{{ y }} {{ x + r }},{{ y }} H{{ x + bw - r }} Q{{ x + bw }},{{ y }} {{ x + bw }},{{ y + r }} V{{ top + plot_h }} Z"></path>
+                {% else %}
+                <path class="bar" d=""></path>
+                {% endif %}
+                {% if bar is sameas h.peak %}
+                <text class="peak-text" x="{{ x + bw / 2 }}" y="{{ y - 5 }}" text-anchor="middle">{{ bar.value }}</text>
+                {% endif %}
+                {% if bar.year is none or bar.year % 5 == 0 %}
+                <text class="axis-text" x="{{ x + bw / 2 }}" y="{{ H - 5 }}" text-anchor="middle">{{ bar.short }}</text>
+                {% endif %}
+                {% endfor %}
+            </svg>
+            <div class="pb-tooltip" role="status"></div>
+        </div>
+        <details class="pb-table-toggle">
+            <summary>以表格查看</summary>
+            <table>
+                <tr><th>年份</th><th>文献数</th></tr>
+                {% for bar in h.bars if bar.value %}<tr><td>{{ bar.label }}</td><td>{{ bar.value }}</td></tr>{% endfor %}
+            </table>
+        </details>
+        {% else %}
+        <div class="pb-empty">暂无带出版年份的文献。</div>
+        {% endif %}
+    </section>
+
+    {# ---------------- 主题 + 最近加入 ---------------- #}
+    <div class="pb-row two">
+        <section class="pb-card">
+            <div class="pb-card-title">
+                <h3>主题总结进度</h3>
+                <span class="pb-card-note">按文献数排序</span>
+            </div>
+            {% if s.themes %}
+            <div class="pb-meters">
+                {% for t in s.themes %}
+                <div>
+                    <div class="pb-meter-head">
+                        <span class="pb-meter-name"><a href="{{ t.url }}">{{ t.name }}</a></span>
+                        <span class="pb-meter-figure"><strong>{{ t.done }}</strong> / {{ t.papers }} 篇</span>
+                    </div>
+                    <div class="pb-track" role="meter" aria-valuemin="0" aria-valuemax="100" aria-valuenow="{{ t.pct }}"
+                        aria-label="{{ t.name }} 主题总结进度"><div style="width: {{ t.pct }}%"></div></div>
+                </div>
+                {% endfor %}
+            </div>
+            {% else %}
+            <div class="pb-empty">还没有主题。可在“主题”页面新建。</div>
+            {% endif %}
+        </section>
+
+        <section class="pb-card">
+            <div class="pb-card-title">
+                <h3>最近加入的文献</h3>
+                <a class="pb-card-note" href="{{ url_for('paper.index_view') }}">查看全部 →</a>
+            </div>
+            <ul class="pb-list">
+                {% for p in s.recent_papers %}
+                <li>
+                    <a class="pb-item-title" href="{{ p.url }}" title="{{ p.title }}"><strong>{{ p.cite }}</strong>{{ p.title }}</a>
+                    <div class="pb-item-meta">
+                        {% for name, done in p.steps %}
+                        <span class="pb-step{% if done %} done{% endif %}">{% if done %}✓{% else %}○{% endif %} {{ name }}</span>
+                        {% endfor %}
+                    </div>
+                </li>
+                {% else %}
+                <li class="pb-empty">暂无文献。</li>
+                {% endfor %}
+            </ul>
+        </section>
+    </div>
+
+    {# ---------------- AI 花费构成 + 最近的 AI 会话 ---------------- #}
+    <div class="pb-row two">
+        <section class="pb-card">
+            <div class="pb-card-title">
+                <h3>AI 花费构成</h3>
+                <span class="pb-card-note">按高峰时段费率预估 · 合计 ¥{{ '%.2f'|format(s.ai.cost) }}</span>
+            </div>
+            {% if s.ai.parts %}
+            <div class="pb-meters">
+                {% for part in s.ai.parts %}
+                <div>
+                    <div class="pb-meter-head">
+                        <span class="pb-meter-name">{{ part.label }}<span class="pb-hint">{{ '{:,.2f}'.format(part.tokens / 1000000) }}M tokens</span></span>
+                        <span class="pb-meter-figure"><strong>¥{{ '%.2f'|format(part.cost) }}</strong> · {{ part.pct }}%</span>
+                    </div>
+                    <div class="pb-track" role="meter" aria-valuemin="0" aria-valuemax="100" aria-valuenow="{{ part.pct }}"
+                        aria-label="{{ part.label }} 花费占比"><div style="width: {{ part.pct }}%"></div></div>
+                </div>
+                {% endfor %}
+            </div>
+            <div class="pb-generated">总结、精读与综述的用量自 {{ s.ai.ledger_since or '用量账本启用' }} 起记录；此前的消耗未计入。</div>
+            {% else %}
+            <div class="pb-empty">还没有 AI 用量记录。</div>
+            {% endif %}
+        </section>
+
+        <section class="pb-card">
+            <div class="pb-card-title">
+                <h3>最近的 AI 会话</h3>
+                <span class="pb-card-note">点击继续</span>
+            </div>
+            <ul class="pb-list">
+                {% for r in s.ai.recent %}
+                <li>
+                    <a class="pb-item-title" href="{{ r.url }}" title="{{ r.title }}">{{ r.title }}</a>
+                    <div class="pb-item-meta">
+                        <span class="pb-kind {{ r.kind }}">{{ r.kind_label }}</span>
+                        <span>{{ r.turns }} 轮 · {{ r.updated }}</span>
+                    </div>
+                </li>
+                {% else %}
+                <li class="pb-empty">还没有 AI 会话。</li>
+                {% endfor %}
+            </ul>
+        </section>
+    </div>
+</div>
+{% endblock %}
+
+{% block tail %}
+{{ super() }}
+<script>
+    (function () {
+        const chart = document.getElementById('pb-year-chart');
+        if (!chart) { return; }
+        const tip = chart.querySelector('.pb-tooltip');
+        const svg = chart.querySelector('svg');
+        chart.querySelectorAll('rect.hit').forEach((hit) => {
+            const bar = hit.nextElementSibling;
+            hit.addEventListener('mouseenter', () => {
+                if (bar) { bar.classList.add('is-hover'); }
+                const box = hit.getBoundingClientRect();
+                const host = chart.getBoundingClientRect();
+                const barBox = bar && bar.getBBox && bar.getAttribute('d') ? bar.getBoundingClientRect() : box;
+                tip.textContent = hit.dataset.label + '：' + hit.dataset.value + ' 篇';
+                tip.style.left = (box.left - host.left + box.width / 2) + 'px';
+                tip.style.top = (Math.min(barBox.top, box.bottom) - host.top) + 'px';
+                tip.style.display = 'block';
+            });
+            hit.addEventListener('mouseleave', () => {
+                if (bar) { bar.classList.remove('is-hover'); }
+                tip.style.display = 'none';
+            });
+        });
+    })();
+</script>
+{% endblock %}
