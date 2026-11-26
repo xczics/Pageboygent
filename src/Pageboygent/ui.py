@@ -1792,6 +1792,7 @@ def _feed_item_payload(item, detail: bool = False) -> dict:
     authors = item.authors_list()
     data = {
         "id": item.id, "title": item.title, "link": item.link, "doi": item.doi,
+        "rerank_note": item.rerank_note if item.status == "scored" else None,
         "doi_url": f"https://doi.org/{item.doi}" if item.doi else None,
         "journal": item.journal, "published": item.published.strftime("%Y-%m-%d") if item.published else "",
         "authors": authors[:6], "author_count": len(authors), "feed": item.feed.name, "feed_id": item.feed_id,
@@ -1822,6 +1823,38 @@ def _feed_item_payload(item, detail: bool = False) -> dict:
     return data
 
 
+def _cite_label(item) -> str:
+    """周报里引用标签的文字：第一作者姓 + 年份（多位作者加“等”）。"""
+    authors = item.authors_list()
+    surname = ""
+    if authors:
+        name = authors[0].strip()
+        surname = name.split(",")[0].strip() if "," in name else name.split()[-1]
+    year = item.published.year if item.published else (item.created_at.year if item.created_at else "")
+    return f"{surname or (item.title or '')[:12]}{' 等' if len(authors) > 1 else ''} {year}".strip()
+
+
+def _report_overview_html(overview: str) -> str:
+    """周报概述：把 [F123] 换成可点击的引用标签（点击在“阅读”里打开这篇文章）。"""
+    from markupsafe import escape
+
+    from . import paper_feed
+
+    html_text = str(_render_markdown_html(overview))
+    ids = {int(n) for n in re.findall(r"\[F(\d+)\]", html_text)}
+    items = {i.id: i for i in paper_feed.Item.select().where(paper_feed.Item.id.in_(list(ids)))} if ids else {}
+
+    def _chip(match: re.Match) -> str:
+        item = items.get(int(match.group(1)))
+        if item is None:   # 条目已被清理
+            return '<span class="fh-cite gone" title="这篇文章已超过保留期被清理">已清理</span>'
+        return (f'<a href="#" class="fh-cite" data-open="{item.id}" title="{escape(item.title)}">'
+                f'{escape(_cite_label(item))}</a>')
+
+    # 相邻的多个引用之间不留空隙也能分开
+    return re.sub(r"\[F(\d+)\]", _chip, html_text)
+
+
 def _feed_report_payload(report) -> dict:
     from . import paper_feed
 
@@ -1831,7 +1864,7 @@ def _feed_report_payload(report) -> dict:
     return {
         "week": report.week, "range": data.get("range"), "unread": report.read_at is None,
         "generated_at": report.generated_at.strftime("%Y-%m-%d %H:%M"), "stats": data.get("stats", {}),
-        "overview_html": str(_render_markdown_html(re.sub(r"\[(F\d+)\]", r"[\1]", report.overview or ""))),
+        "overview_html": _report_overview_html(report.overview or ""),
         "groups": [{"name": name, "items": [items[i] for i in group if i in items]}
                    for name, group in data.get("groups", {}).items()],
         "confirm": [items[i] for i in data.get("confirm", []) if i in items],
@@ -2307,30 +2340,34 @@ def create_storage_admin_app() -> Flask:
         paper_feed.invalidate_model()
         return jsonify({"ok": True, **_feed_profile_payload()})
 
-    _describe_state = {"running": False, "error": None}
+    _describe_state = {"running": False, "error": None, "regroup": False, "started_at": None}
+    _describe_lock = threading.Lock()
 
     @app.post("/admin-api/feed/profile/describe")
     def feed_api_profile_describe() -> Any:
         from . import paper_feed
 
-        if _describe_state["running"]:
-            return jsonify({"ok": True, "running": True})
+        body = _json_body()
+        regroup, force = _as_bool(body.get("regroup")), _as_bool(body.get("force"))
+        with _describe_lock:   # 检查与置位在同一把锁里：连点两次、或离开页面再回来点，都只会跑一个
+            if _describe_state["running"]:
+                return jsonify({"ok": True, **_describe_state, "already_running": True})
+            _describe_state.update(running=True, error=None, regroup=regroup,
+                                   started_at=datetime.now().isoformat(timespec="seconds"))
 
         def _run() -> None:
-            _describe_state.update(running=True, error=None)
             try:
-                if _as_bool(_json_body_cache.get("regroup")):
+                if regroup:
                     paper_feed.request_regroup()
                 model, rb, _ = paper_feed.library_model(describe=False)  # 首次会为全库计算向量并分组
-                paper_feed.describe_facets(model, rb, rb.library_papers(), force=_as_bool(_json_body_cache.get("force")))
+                paper_feed.describe_facets(model, rb, rb.library_papers(), force=force)
             except Exception as exc:
                 _describe_state["error"] = str(exc)
             finally:
                 _describe_state["running"] = False
 
-        _json_body_cache = _json_body()
         threading.Thread(target=_run, name="facet-describe", daemon=True).start()
-        return jsonify({"ok": True, "running": True})
+        return jsonify({"ok": True, **_describe_state})
 
     @app.get("/admin-api/feed/profile/describe")
     def feed_api_profile_describe_state() -> Any:

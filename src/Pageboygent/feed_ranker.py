@@ -36,7 +36,7 @@ COLD_START_WEIGHTS = {
     "title": {"dense": 0.45, "lexical": 0.15, "author": 0.30, "feedback": 0.10},
 }
 LLM_BLEND = 0.5                                     # 最终分 = (1-LLM_BLEND)*基础分 + LLM_BLEND*LLM 分
-SHORTLIST_MIN_BASE = {"abstract": 0.35, "title": 0.25}  # 标题很短，送 LLM 几乎不花钱，门槛放低保召回
+SHORTLIST_MIN_BASE = {"abstract": 0.35, "title": 0.35}  # 两类都按同一把锚点标尺换算后，门槛一致
 AUTO_THRESHOLD = {"abstract": 0.75, "title": 0.78}      # 初始值；运行中按各自的自动入库准确率校准
 CONFIRM_THRESHOLD = {"abstract": 0.50, "title": 0.45}
 # 只有标题的文章自动入库时，还要求至少一项“强证据”：标题与库很近，或作者在库中常见
@@ -92,10 +92,13 @@ class LibraryModel:
     meta: dict[int, dict]               # pid -> {cite, title, key}
     facets: list[Facet]
     author_counts: dict[str, int]
-    in_domain_scores: np.ndarray        # 库内文献"彼此接近程度"的分布，用来把相似度换算成百分位
+    in_domain_scores: np.ndarray        # 库内文献与最近 3 篇邻居的平均相似度（已按时间衰减），供页面解释用
     must_follow: set[str] = field(default_factory=set)
     title_vectors: np.ndarray | None = None       # 只用标题算的向量：与"只有标题"的新文章对称比较
     in_domain_title_scores: np.ndarray | None = None
+    # 相似度换算的两个锚点 {kind: (lo, hi)}：lo = 库内随便两篇有多像，hi = 一篇典型库内文献与它最近邻居有多像。
+    # 新文章的原始相似度按 (raw - lo) / (hi - lo) 换算到 0..1：像“随便一篇”就是 0，像“典型库内文献”就是 1。
+    anchors: dict = field(default_factory=dict)
 
     def index_of(self) -> dict[int, int]:
         return {pid: i for i, pid in enumerate(self.pids)}
@@ -207,17 +210,28 @@ def build_library_model(backend: RankerBackend, profile: dict | None = None) -> 
 
     # 库内文献与"其余库内文献中最近 3 篇"的平均相似度：新文章的相似度按这个分布换算成百分位，
     # 这样分数的含义是"它和你的库有多近——像一篇典型的库内文献那样近，就是 50%"
-    def _in_domain(m: np.ndarray) -> np.ndarray:
-        if n <= 4:
-            return np.array([0.5], dtype=np.float32)
-        sims = m @ m.T
-        np.fill_diagonal(sims, -1.0)
-        return np.sort(np.sort(sims, axis=1)[:, -3:].mean(axis=1))
+    # 与新文章完全相同的算法：相似度乘时间衰减，取最近 3 篇的平均
+    decay = (0.85 + 0.15 * recency).astype(np.float32)
 
+    def _calibrate(m: np.ndarray) -> tuple[np.ndarray, tuple[float, float]]:
+        if n <= 4:
+            return np.array([0.5], dtype=np.float32), (0.3, 0.7)
+        sims = (m @ m.T) * decay[None, :]
+        np.fill_diagonal(sims, np.nan)
+        top3 = np.sort(np.nan_to_num(sims, nan=-1.0), axis=1)[:, -3:].mean(axis=1)
+        lo = float(np.nanmedian(sims))
+        hi = float(np.median(top3))
+        if hi - lo < 0.05:
+            hi = lo + 0.05
+        return np.sort(top3), (round(lo, 4), round(hi, 4))
+
+    in_domain, full_anchor = _calibrate(matrix)
+    in_domain_title, title_anchor = _calibrate(title_matrix)
     must_follow = {author_key(a) for a in profile.get("must_follow_authors", []) if author_key(a)}
     return LibraryModel(pids=pids, vectors=matrix, recency=recency, meta=meta, facets=facets,
-                        author_counts=counts, in_domain_scores=_in_domain(matrix), must_follow=must_follow,
-                        title_vectors=title_matrix, in_domain_title_scores=_in_domain(title_matrix))
+                        author_counts=counts, in_domain_scores=in_domain, must_follow=must_follow,
+                        title_vectors=title_matrix, in_domain_title_scores=in_domain_title,
+                        anchors={"abstract": full_anchor, "title": title_anchor})
 
 
 def cluster_library(pids: list[int], vectors: np.ndarray, previous: list[dict] | None = None,
@@ -272,6 +286,12 @@ def cluster_library(pids: list[int], vectors: np.ndarray, previous: list[dict] |
     return sorted(result, key=lambda g: -len(g["pids"]))
 
 
+def scale_similarity(raw: float, anchor: tuple[float, float]) -> float:
+    """原始余弦相似度 → 0..1：等于“库内随便两篇”的相似度为 0，等于“典型库内文献与最近邻居”为 1。"""
+    lo, hi = anchor
+    return float(min(1.0, max(0.0, (raw - lo) / max(hi - lo, 1e-6))))
+
+
 def _percentile(sorted_values: np.ndarray, value: float) -> float:
     if not len(sorted_values):
         return 0.0
@@ -290,7 +310,7 @@ def compute_features(model: LibraryModel, backend: RankerBackend, *, vec: np.nda
     features: dict[str, Any] = {"info": "title" if title_only else "abstract"}
     use_titles = title_only and model.title_vectors is not None and len(model.title_vectors)
     library = model.title_vectors if use_titles else model.vectors
-    distribution = model.in_domain_title_scores if use_titles else model.in_domain_scores
+    anchor = model.anchors.get("title" if use_titles else "abstract") or (0.3, 0.7)
     if len(model.pids):
         # 时间衰减：越新的库内文献，相似度打折越少
         sims = (library @ vec) * (0.85 + 0.15 * model.recency)
@@ -309,7 +329,7 @@ def compute_features(model: LibraryModel, backend: RankerBackend, *, vec: np.nda
                 best_facet, best_score = facet, score
         nearest = np.argsort(-sims)[:3]
         features["dense_raw"] = round(max(best_score, 0.0), 4)
-        features["dense"] = round(_percentile(distribution, best_score), 4)
+        features["dense"] = round(scale_similarity(best_score, anchor), 4)
         features["facet"] = best_facet.id if best_facet else None
         features["facet_name"] = best_facet.name if best_facet else None
         features["facet_scores"] = facet_scores
@@ -333,11 +353,13 @@ def compute_features(model: LibraryModel, backend: RankerBackend, *, vec: np.nda
     features["author_match"] = best_author if best_value > 0 else None
     features["author_count"] = model.author_counts.get(best_author, 0) if best_author else 0
 
+    # 反馈项：与你 👍 / 👎 过的文章的接近程度，用同一把标尺换算——只是“随便一篇”那样像不加也不扣分
+    full_anchor = model.anchors.get("abstract") or (0.3, 0.7)
     pos = max((float(_normalize(p) @ vec) for p in positives), default=0.0)
     neg = max((float(_normalize(n) @ vec) for n in negatives), default=0.0)
     features["pos_sim"], features["neg_sim"] = round(pos, 4), round(neg, 4)
-    # 反馈项：比起负例更像正例才加分，更像负例则扣分
-    features["feedback"] = round(max(-1.0, min(1.0, (pos - neg) * 3)), 4) if (positives or negatives) else 0.0
+    closeness = lambda s: scale_similarity(s, full_anchor)  # noqa: E731
+    features["feedback"] = round((closeness(pos) if positives else 0.0) - (closeness(neg) if negatives else 0.0), 4)
     return features
 
 

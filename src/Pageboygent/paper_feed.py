@@ -90,6 +90,9 @@ class Item(_Base):
     read_at = peewee.DateTimeField(null=True)         # 在阅读器里打开过（隐式信号，第二期使用）
     created_at = peewee.DateTimeField(default=dt.datetime.now, index=True)
     scored_at = peewee.DateTimeField(null=True)
+    llm_profile = peewee.CharField(null=True)         # 做 LLM 判断时画像文字的摘要：画像变了才考虑重判
+    rerank_note = peewee.CharField(null=True)         # 重新评估后档位变化的原因（页面上显示）
+    rescored_at = peewee.DateTimeField(null=True)
 
     def authors_list(self) -> list[str]:
         try:
@@ -176,17 +179,52 @@ def extract_doi(*texts: str | None) -> str | None:
     return None
 
 
+_FEED_TITLE_NOISE = re.compile(r"^(?:ScienceDirect Publication|Wiley|AAAS|Recent articles published in)\s*:\s*|\s*:\s*Table of Contents$|\s*-\s*latest papers$", re.I)
+
+
+def clean_journal(name: str | None) -> str | None:
+    """RSS 源标题当期刊名时去掉平台前后缀，例如 “ScienceDirect Publication: Icarus” → “Icarus”。"""
+    if not name:
+        return None
+    text = str(name).strip()
+    for _ in range(2):
+        text = _FEED_TITLE_NOISE.sub("", text).strip()
+    return text or None
+
+
+def _looks_like_feed_title(name: str | None) -> bool:
+    return bool(name) and clean_journal(name) != str(name).strip()
+
+
 def _norm_title(title: str) -> str:
     return re.sub(r"[\W_]+", "", (title or "").lower())[:200]
 
 
+_JUNK_AUTHOR = re.compile(r"https?://|ror\.org|Department|University|Institute", re.I)
+
+
+def _looks_like_junk(name: str) -> bool:
+    """RSS 里粘在一起的作者串（例如 PNAS/Science 的“名字名字名字+机构+网址”）：无法可靠拆分。"""
+    return len(name) > 60 or bool(_JUNK_AUTHOR.search(name)) or len(re.findall(r"[a-z\u00e0-\u017f][A-Z]", name)) >= 2
+
+
 def split_authors(value: Any) -> list[str]:
+    """把 RSS 里的作者字段拆成名单。拆出来的有任何一项像是粘连的乱串，就整体放弃（返回空），交给 OpenAlex 补全。"""
     if isinstance(value, list):
-        names = [a.get("name", "") if isinstance(a, dict) else str(a) for a in value]
+        raw = [a.get("name", "") if isinstance(a, dict) else str(a) for a in value]
     else:
-        text = strip_html(str(value or ""))
-        names = re.split(r";|\band\b|&|,(?=\s*[A-Z][a-z]+\s+[A-Z])", text)
-    return [n.strip(" ,.") for n in names if n and len(n.strip()) > 1][:60]
+        raw = [str(value or "")]
+    names: list[str] = []
+    for chunk in raw:
+        text = strip_html(chunk)
+        # Wiley：“N. Agarwal, \nT. A. Smith, \n…”；其他：分号、and、&、“, 名 姓”
+        for part in re.split(r"\s*\n\s*|;|\band\b|&|,(?=\s*[A-Z][a-z]+\s+[A-Z])", text):
+            part = part.strip(" ,.")
+            if part and len(part) > 1:
+                names.append(part)
+    if any(_looks_like_junk(n) for n in names):
+        return []
+    return names[:60]
 
 
 # ---------------------------------------------------------------------------
@@ -262,6 +300,26 @@ class FeedBackend:
                         "journal": source.get("display_name")}
         except Exception as exc:
             print(f"[paper_feed] OpenAlex title search failed: {exc}")
+        # 新文章 OpenAlex 往往要晚几天才收录；出版商上线时就向 Crossref 登记了 DOI
+        try:
+            r = requests.get("https://api.crossref.org/works", timeout=20, headers={"User-Agent": self.user_agent},
+                             params={"query.bibliographic": title[:300], "rows": 3,
+                                     "select": "DOI,title,container-title,author,abstract,issued"})
+            if not r.ok:
+                return None
+            for work in r.json().get("message", {}).get("items", []):
+                ratio = difflib.SequenceMatcher(None, _norm_title(title), _norm_title((work.get("title") or [""])[0])).ratio()
+                if ratio < 0.92:
+                    continue
+                abstract = strip_html(work.get("abstract") or "")
+                parts = ((work.get("issued") or {}).get("date-parts") or [[None]])[0]
+                published = "-".join(f"{v:02d}" if i else str(v) for i, v in enumerate(parts) if v) or None
+                return {"doi": (work.get("DOI") or "").lower() or None, "abstract": abstract,
+                        "source": "crossref" if abstract else "none",
+                        "authors": [" ".join(filter(None, [a.get("given"), a.get("family")])) for a in work.get("author", [])],
+                        "journal": (work.get("container-title") or [None])[0], "published": published}
+        except Exception as exc:
+            print(f"[paper_feed] Crossref title search failed: {exc}")
         return None
 
     def llm_client(self) -> Any:
@@ -272,7 +330,14 @@ class FeedBackend:
     def library_doi_map(self) -> dict[str, int]:
         from .storage import Paper
 
-        return {str(p.doi).lower(): int(p.id) for p in Paper.select(Paper.id, Paper.doi) if p.doi}
+        from .storage import normalize_doi
+
+        out = {}
+        for p in Paper.select(Paper.id, Paper.doi):
+            doi = normalize_doi(p.doi)
+            if doi:            # 没有 DOI 的不参与查重
+                out.setdefault(doi, int(p.id))
+        return out
 
     # ---- Zotero ----
     def zotero_collection(self, root: str, child: str) -> str:
@@ -308,15 +373,11 @@ class FeedBackend:
                 if str(existing["data"].get("DOI", "")).lower() == item["doi"].lower():
                     _perform_local_write("add to collection", zot.addto_collection, collection_key, existing)
                     return existing["data"]["key"]
-        creators = []
-        for name in item.get("authors", [])[:50]:
-            parts = name.rsplit(" ", 1)
-            creators.append({"creatorType": "author", "firstName": parts[0] if len(parts) > 1 else "",
-                             "lastName": parts[-1]})
+        creators = author_creators(item.get("authors", []))
         data = {"itemType": "journalArticle", "title": item["title"], "creators": creators, "tags": [],
                 "collections": [collection_key], "relations": {}, "DOI": item.get("doi") or "",
                 "url": item.get("link") or "", "abstractNote": item.get("abstract") or "",
-                "publicationTitle": item.get("journal") or "", "date": item.get("published") or ""}
+                "publicationTitle": clean_journal(item.get("journal")) or "", "date": item.get("published") or ""}
         result = _perform_local_write("create rss item", zot.create_items, [data])
         created = (result or {}).get("successful") or (result or {}).get("success") or {}
         first = next(iter(created.values()), None) if isinstance(created, dict) else None
@@ -324,6 +385,30 @@ class FeedBackend:
         if not key:
             raise RuntimeError(f"Zotero 未返回新条目的 key：{result}")
         return str(key)
+
+    def zotero_patch_item(self, key: str, fields: dict) -> bool:
+        """按“只填空、改明显错误”的规则更新一个 Zotero 条目。有改动返回 True。"""
+        from .zt_tools import _perform_local_write, zot
+
+        data = zot.item(key)["data"]
+        changes = {}
+        for name, value in fields.items():
+            if not value:
+                continue
+            current = data.get(name)
+            if name == "creators":
+                if _bad_creators(current or []):
+                    changes[name] = value
+            elif name == "publicationTitle":
+                if not current or _looks_like_feed_title(current):
+                    changes[name] = value
+            elif not current:
+                changes[name] = value
+        if not changes:
+            return False
+        data.update(changes)
+        _perform_local_write(f"sync rss item {key}", zot.update_item, data)
+        return True
 
     def track_in_pageboygent(self, zotero_key: str, root: str) -> None:
         """纳入 Pageboygent 追踪：经 write_queue 交给 heartbeat 线程执行（PDF → 全文 → 总结 流水线自动接手）。"""
@@ -425,16 +510,33 @@ def library_authors(papers: list[dict]) -> dict[int, list[str]]:
     missing = [p for p in papers if p["pid"] not in cached or cached[p["pid"]].key != p["key"]]
     if missing:
         try:
-            from .zt_tools import get_info
+            from pyzotero.zotero_errors import ResourceNotFoundError as ResourceNotFound
 
-            for paper in missing:
-                creators, = get_info(paper["key"], ["creators"])
-                names = [" ".join(filter(None, [c.get("firstName"), c.get("lastName")])) or c.get("name", "")
-                         for c in (creators or []) if c.get("creatorType") == "author"]
-                LibraryAuthor.replace(pid=paper["pid"], key=paper["key"], authors=json.dumps(names)).execute()
-            cached = {row.pid: row for row in LibraryAuthor.select()}
+            from .zt_tools import get_info
         except Exception as exc:
             print(f"[paper_feed] cannot read creators from Zotero, falling back to first authors: {exc}")
+            missing = []
+        not_found, failures = 0, 0
+        for paper in missing:
+            try:
+                creators, = get_info(paper["key"], ["creators"])
+            except ResourceNotFound:
+                # Zotero 里已经没有这个条目（被删或移走）：记为空，之后不再反复去查；用第一作者
+                creators = []
+                not_found += 1
+            except Exception as exc:
+                failures += 1
+                if failures >= 3:   # 连续出错多半是 Zotero 没开：这次先用第一作者，下次再补
+                    print(f"[paper_feed] cannot read creators from Zotero, falling back to first authors: {exc}")
+                    break
+                continue
+            failures = 0
+            names = [" ".join(filter(None, [c.get("firstName"), c.get("lastName")])) or c.get("name", "")
+                     for c in (creators or []) if c.get("creatorType") == "author"]
+            LibraryAuthor.replace(pid=paper["pid"], key=paper["key"], authors=json.dumps(names)).execute()
+        if not_found:
+            print(f"[paper_feed] {not_found} library papers are no longer in Zotero; using first authors for them")
+        cached = {row.pid: row for row in LibraryAuthor.select()}
     for paper in papers:
         row = cached.get(paper["pid"])
         names = json.loads(row.authors) if row else []
@@ -447,18 +549,23 @@ _model_signature = None
 ranker_backend = None  # 测试时替换为伪造的 RankerBackend
 
 
+_model_build_lock = threading.Lock()
+
+
 def library_model(*, describe: bool = True):
-    """库内排序模型（库内文献或画像变化时重建）。describe=True 时顺便让 AI 为新组提炼说明、为有新文献的组提建议。"""
+    """库内排序模型（库内文献或画像变化时重建）。describe=True 时顺便让 AI 为新组提炼说明、为有新文献的组提建议。
+    构建同一时间只进行一次：画像页的“分组”与后台打分同时触发时，后到的等前一个建完直接复用。"""
     global _model_cache, _model_signature
     from . import feed_ranker
 
     rb = ranker_backend or feed_ranker.RankerBackend()
-    profile = load_profile()
-    papers = rb.library_papers()
-    signature = (len(papers), json.dumps(profile, sort_keys=True))
-    if _model_cache is None or _model_signature != signature:
-        _model_cache = feed_ranker.build_library_model(rb, profile)
-        _model_signature = signature
+    with _model_build_lock:
+        profile = load_profile()
+        papers = rb.library_papers()
+        signature = (len(papers), json.dumps(profile, sort_keys=True))
+        if _model_cache is None or _model_signature != signature:
+            _model_cache = feed_ranker.build_library_model(rb, profile)
+            _model_signature = signature
     store = facet_store_ready()
     data = describe_facets(_model_cache, rb, papers) if describe else store.load()
     refresh_facet_text(_model_cache, data)
@@ -623,7 +730,7 @@ def fetch_feed(feed: Feed, library_dois: dict[str, int]) -> int:
         Item.create(
             feed=feed, guid=str(entry.get("id") or entry.get("link") or key)[:250], dedupe_key=key[:250], doi=doi,
             title=title, authors=json.dumps(split_authors(entry.get("authors") or entry.get("author") or "")),
-            journal=(entry.get("prism_publicationname") or feed_title or feed.name), published=published,
+            journal=clean_journal(entry.get("prism_publicationname") or feed_title or feed.name), published=published,
             link=entry.get("link"), raw_html=raw[:50000],
             abstract=abstract if len(abstract) > 200 else None,
             abstract_source="rss" if len(abstract) > 200 else "none",
@@ -639,33 +746,59 @@ ENRICH_MAX_ATTEMPTS = 5
 ENRICH_WINDOW_DAYS = 21
 
 
-def enrich_items(limit: int = 200) -> int:
+ENRICH_BUDGET_SECONDS = 180   # 每次运行最多花在补全上的时间：剩下的下次接着补，不耽误打分
+
+
+def enrich_one(item: "Item", now: dt.datetime | None = None) -> bool:
+    """补全一篇：DOI、摘要、作者、正式刊名、发表日期。只填缺的，或替换明显不对的（RSS 源标题当刊名）。返回是否有变化。"""
+    now = now or dt.datetime.now()
+    info = backend.enrich(item.doi) if item.doi else backend.enrich_by_title(item.title)
+    had_abstract = bool(item.abstract)
+    before = (item.doi, item.abstract, item.authors, item.journal, item.published)
+    if info:
+        if info.get("doi") and not item.doi:
+            item.doi = info["doi"]
+        if info.get("abstract") and len(info["abstract"]) > len(item.abstract or "") and len(info["abstract"]) > 200:
+            item.abstract, item.abstract_source, item.info = info["abstract"], info["source"], "abstract"
+        if info.get("authors") and len(info["authors"]) >= len(item.authors_list()):
+            item.authors = json.dumps(info["authors"][:60])
+        if info.get("journal") and (not item.journal or _looks_like_feed_title(item.journal)):
+            item.journal = info["journal"]
+        if not item.published and info.get("published"):
+            try:
+                item.published = dt.datetime.fromisoformat(str(info["published"])[:10])
+            except ValueError:
+                pass
+    if item.abstract and not had_abstract and item.status == "scored":
+        item.status = "new"  # 补到了摘要：按“有摘要”重新打分
+    item.enriched = True
+    item.enrich_attempts += 1
+    item.last_enrich_at = now
+    item.save()
+    return before != (item.doi, item.abstract, item.authors, item.journal, item.published)
+
+
+def enrich_items(limit: int = 200, budget_seconds: float | None = None) -> int:
     """补全摘要与作者：有 DOI 查 OpenAlex/Crossref，没有 DOI 按标题查 OpenAlex。
-    只有标题的条目会在之后几天里重试；补到摘要后，未入库、未表态的条目重新打分。"""
+    只有标题的条目会在之后几天里重试；补到摘要后，未入库、未表态的条目重新打分。
+    补全逐篇访问外部 API、比较慢，每次运行限时；没补到的先按“仅标题”打分，下次补到摘要后自动重打。"""
     now = dt.datetime.now()
-    retry = (Item.abstract.is_null(True) & (Item.enrich_attempts < ENRICH_MAX_ATTEMPTS)
+    deadline = time.monotonic() + (ENRICH_BUDGET_SECONDS if budget_seconds is None else budget_seconds)
+    missing = (Item.abstract.is_null(True) | (Item.authors == "[]") | Item.authors.is_null(True)
+               | (Item.doi.is_null(True) & (Item.status == "ingested")))
+    retry = (missing & (Item.enrich_attempts < ENRICH_MAX_ATTEMPTS)
              & (Item.last_enrich_at < now - dt.timedelta(days=ENRICH_RETRY_DAYS))
              & (Item.created_at > now - dt.timedelta(days=ENRICH_WINDOW_DAYS))
-             & Item.status.in_(["new", "scored"]) & Item.feedback.is_null(True))
+             & (Item.status.in_(["new", "scored"]) & Item.feedback.is_null(True) | (Item.status == "ingested")))
     query = Item.select().where(((Item.enriched == False) & Item.status.in_(["new", "scored"])) | retry).limit(limit)  # noqa: E712
     count = 0
-    for item in query:
-        info = backend.enrich(item.doi) if item.doi else backend.enrich_by_title(item.title)
-        had_abstract = bool(item.abstract)
-        if info:
-            if info.get("doi") and not item.doi:
-                item.doi = info["doi"]
-            if info.get("abstract") and len(info["abstract"]) > len(item.abstract or "") and len(info["abstract"]) > 200:
-                item.abstract, item.abstract_source, item.info = info["abstract"], info["source"], "abstract"
-            if info.get("authors") and len(info["authors"]) >= len(item.authors_list()):
-                item.authors = json.dumps(info["authors"][:60])
-            item.journal = item.journal or info.get("journal")
-        if item.abstract and not had_abstract and item.status == "scored":
-            item.status = "new"  # 补到了摘要：按“有摘要”重新打分
-        item.enriched = True
-        item.enrich_attempts += 1
-        item.last_enrich_at = now
-        item.save()
+    todo = list(query)
+    # 先把结果取完再逐条处理：边遍历未结束的查询边写入，另一线程在此期间写过库时 SQLite 会直接报 database is locked
+    for n, item in enumerate(todo, start=1):
+        if time.monotonic() > deadline:
+            break
+        _state["progress"] = f"{n}/{len(todo)}"
+        enrich_one(item, now)
         count += 1
         time.sleep(0.1)  # 对公共 API 客气一点
     return count
@@ -733,23 +866,84 @@ def _record_llm(usage: Any, model: str) -> None:
     record("文献追踪", model, usage, ref="paper_feed")
 
 
+def feedback_vectors(rb) -> tuple[list, list]:
+    """正例：你 👍 的、你手动入库或确认入库的文章；负例：你 👎 的。自动入库的不算（不拿系统自己的选择训练自己）。
+    还没算过向量的（例如抓到后立刻手动入库的）现场补算并存下。"""
+    from . import feed_ranker
+
+    labelled = list(Item.select().where(Item.feedback.is_null(False) |
+                                        ((Item.status == "ingested") & (Item.ingest_mode != "auto"))))
+    positives, negatives = [], []
+    for item in labelled:
+        if item.vector is None:
+            text = item.title if not item.abstract else f"{item.title}\n{item.abstract}"
+            item.vector = feed_ranker.vector_to_blob(rb.embed(text))
+            item.save()
+        vec = feed_ranker.blob_to_vector(item.vector)
+        if (item.feedback or 0) < 0:
+            negatives.append(vec)
+        else:
+            positives.append(vec)
+    return positives, negatives
+
+
+def _item_text(item: "Item") -> str:
+    return item.title if not item.abstract else f"{item.title}\n{item.abstract}"
+
+
+def _profile_digest(profile_text: str) -> str:
+    return hashlib.md5(profile_text.encode()).hexdigest()[:12]
+
+
+def _judge(pairs: list[tuple], model, profile: dict) -> int:
+    """对 [(item, features)] 做 LLM 判断，写回 llm_score / llm_reason / llm_profile。返回判断成功的篇数。"""
+    from . import feed_ranker
+
+    if not pairs:
+        return 0
+    client = backend.llm_client()
+    model_name = get_config("model_name_cheap")
+    profile_text = feed_ranker.render_profile(model, profile)
+    digest = _profile_digest(profile_text)
+    batch_size = int(get_config("feed_llm_batch_size") or 8)
+    judged_count = 0
+    for start in range(0, len(pairs), batch_size):
+        _state["progress"] = f"LLM 判断 {min(start + batch_size, len(pairs))}/{len(pairs)}"
+        batch = pairs[start:start + batch_size]
+        payload = [{"id": f"F{item.id}", "title": item.title, "abstract": item.abstract,
+                    "authors": "; ".join(item.authors_list()[:8]), "journal": item.journal,
+                    "nearest": features.get("nearest", [])} for item, features in batch]
+        try:
+            judged, usage = feed_ranker.judge_batch(client, model_name, profile_text, payload)
+            _record_llm(usage, model_name)
+        except Exception as exc:
+            print(f"[paper_feed] LLM judge failed: {exc}")
+            judged = {}
+        for item, _ in batch:
+            result = judged.get(f"F{item.id}")
+            if result:
+                item.llm_score, item.llm_reason, item.llm_profile = result["score"], result["reason"], digest
+                item.save()
+                judged_count += 1
+    return judged_count
+
+
 def score_items(limit: int = 400) -> int:
     from . import feed_ranker
 
     items = list(Item.select().where(Item.status == "new").limit(limit))
     if not items:
         return 0
+    _state["progress"] = "准备库内模型"
     model, rb, profile = library_model()
-    labelled = Item.select().where(Item.feedback.is_null(False) & Item.vector.is_null(False))
-    positives = [feed_ranker.blob_to_vector(i.vector) for i in labelled if i.feedback > 0]
-    negatives = [feed_ranker.blob_to_vector(i.vector) for i in labelled if i.feedback < 0]
+    positives, negatives = feedback_vectors(rb)
     shortlist = []
-    for item in items:
+    for n, item in enumerate(items, start=1):
+        _state["progress"] = f"计算相似度 {n}/{len(items)}"
         title_only = not item.abstract
         item.info = "title" if title_only else "abstract"
-        text = item.title if title_only else f"{item.title}\n{item.abstract}"
-        vec = rb.embed(text)
-        features = feed_ranker.compute_features(model, rb, vec=vec, text=text, authors=item.authors_list(),
+        vec = rb.embed(_item_text(item))
+        features = feed_ranker.compute_features(model, rb, vec=vec, text=_item_text(item), authors=item.authors_list(),
                                                 positives=positives, negatives=negatives, title_only=title_only)
         item.vector = feed_ranker.vector_to_blob(vec)
         item.features = feed_ranker.features_json(features)
@@ -760,28 +954,7 @@ def score_items(limit: int = 400) -> int:
         if item.base_score >= feed_ranker.SHORTLIST_MIN_BASE[item.info] and not prefiltered:
             shortlist.append((item, features))
         item.save()
-
-    batch_size = int(get_config("feed_llm_batch_size") or 8)
-    if shortlist:
-        client = backend.llm_client()
-        model_name = get_config("model_name_cheap")
-        profile_text = feed_ranker.render_profile(model, profile)
-        for start in range(0, len(shortlist), batch_size):
-            batch = shortlist[start:start + batch_size]
-            payload = [{"id": f"F{item.id}", "title": item.title, "abstract": item.abstract,
-                        "authors": "; ".join(item.authors_list()[:8]), "journal": item.journal,
-                        "nearest": features.get("nearest", [])} for item, features in batch]
-            try:
-                judged, usage = feed_ranker.judge_batch(client, model_name, profile_text, payload)
-                _record_llm(usage, model_name)
-            except Exception as exc:
-                print(f"[paper_feed] LLM judge failed: {exc}")
-                judged = {}
-            for item, _ in batch:
-                result = judged.get(f"F{item.id}")
-                if result:
-                    item.llm_score, item.llm_reason = result["score"], result["reason"]
-                    item.save()
+    _judge(shortlist, model, profile)
 
     thresholds = load_calibration()
     for item in items:
@@ -794,12 +967,103 @@ def score_items(limit: int = 400) -> int:
     return len(items)
 
 
+RERANK_NEAR = 0.10        # 离档位门槛这么近、且画像已变的文章，才重做 LLM 判断
+RERANK_MAX_LLM = 40       # 每次重新评估最多重判 / 补判多少篇（控制花费）
+
+
+def rescore_pending() -> dict:
+    """重新评估还没处理的文章（保留期内、待确认或低分、你还没表态）：
+    - 基础分每次都按当前的画像、文献库和你的反馈重算（用存好的向量，几乎不花时间）；
+    - 新进入短名单、还没做过 LLM 判断的补做；画像文字变了且分数离门槛不远的重做；其余沿用原判断；
+    - 重新划分档位，但最多升到“待确认”：老文章因你最近的反馈变得相关，让你看一眼再入库，
+      也不掺进“自动入库准确率”的统计。档位变化的原因写在 rerank_note 里。"""
+    from . import feed_ranker
+
+    cutoff = dt.datetime.now() - dt.timedelta(days=retention_days())
+    pending = list(Item.select().where((Item.status == "scored") & Item.band.in_(["confirm", "low"])
+                                       & Item.feedback.is_null(True) & Item.vector.is_null(False)
+                                       & (Item.created_at > cutoff)))
+    if not pending:
+        return {"rescored": 0, "judged": 0, "up": 0, "down": 0}
+    _state["progress"] = "准备库内模型"
+    model, rb, profile = library_model(describe=False)
+    positives, negatives = feedback_vectors(rb)
+    digest = _profile_digest(feed_ranker.render_profile(model, profile))
+    thresholds = load_calibration()
+    to_judge, previous = [], {}
+    for n, item in enumerate(pending, start=1):
+        _state["progress"] = f"重算基础分 {n}/{len(pending)}"
+        old_features = json.loads(item.features or "{}")
+        previous[item.id] = (item.band, old_features)
+        features = feed_ranker.compute_features(model, rb, vec=feed_ranker.blob_to_vector(item.vector),
+                                                text=_item_text(item), authors=item.authors_list(),
+                                                positives=positives, negatives=negatives, title_only=item.info == "title")
+        item.features = feed_ranker.features_json(features)
+        item.base_score = feed_ranker.base_score(features)
+        item.facet_name = features.get("facet_name")
+        shortlisted = item.base_score >= feed_ranker.SHORTLIST_MIN_BASE[item.info] and not (
+            item.feed.broad and features["dense"] < 0.05)
+        if item.llm_score is None and shortlisted:
+            to_judge.append((item, features))
+        elif item.llm_score is not None and item.llm_profile != digest:
+            score = feed_ranker.final_score(item.base_score, item.llm_score)
+            gates = [thresholds["confirm"][item.info], thresholds["auto"][item.info]]
+            if any(abs(score - gate) < RERANK_NEAR for gate in gates):
+                to_judge.append((item, features))
+    to_judge.sort(key=lambda pair: -pair[0].base_score)
+    judged = _judge(to_judge[:RERANK_MAX_LLM], model, profile)
+
+    up = down = 0
+    order = {"low": 0, "confirm": 1, "auto": 2}
+    for item in pending:
+        old_band, old_features = previous[item.id]
+        item.score = feed_ranker.final_score(item.base_score or 0.0, item.llm_score)
+        band = feed_ranker.assign_band(item.score, info=item.info, llm_score=item.llm_score,
+                                       features=json.loads(item.features or "{}"), thresholds=thresholds)
+        band = "confirm" if band == "auto" else band          # 重新评估最多升到“待确认”
+        if band != old_band:
+            new_features = json.loads(item.features or "{}")
+            rose = order[band] > order[old_band]
+            up, down = up + rose, down + (not rose)
+            if abs(new_features.get("feedback", 0) - old_features.get("feedback", 0)) >= 0.1:
+                cause = "你最近的反馈"
+            elif abs(new_features.get("dense", 0) - old_features.get("dense", 0)) >= 0.1:
+                cause = "画像或文献库的变化"
+            else:
+                cause = "重新评估"
+            item.rerank_note = f"因{cause}{'上升' if rose else '下降'}"
+            item.band = band
+        item.rescored_at = dt.datetime.now()
+        item.save()
+    return {"rescored": len(pending), "judged": judged, "up": up, "down": down}
+
+
 def ingest(item_id: int, mode: str = "manual") -> Item:
     """入库 = 进 Zotero 的 RSS_TRACK/<订阅源> 子集合，并纳入 Pageboygent 追踪。"""
     init_db()
     item = Item.get_by_id(item_id)
     if item.status == "ingested":
         return item
+    # 入库前再按 DOI 查一次重：抓取之后文献库可能已经有了这篇（没有 DOI 的不查）
+    from .storage import normalize_doi
+
+    doi = normalize_doi(item.doi)
+    in_library = backend.library_doi_map().get(doi) if doi else None
+    if in_library:
+        item.status, item.in_library_pid, item.ingest_error = "in_library", in_library, None
+        item.save()
+        return item
+    if not item.doi or not item.authors_list():
+        try:
+            enrich_one(item)   # 抓到后还没轮到补全：入库前当场补，免得 Zotero 里只有一个标题
+        except Exception as exc:
+            print(f"[paper_feed] enrich before ingest failed for item {item.id}: {exc}")
+        doi = normalize_doi(item.doi)
+        in_library = backend.library_doi_map().get(doi) if doi else None
+        if in_library:
+            item.status, item.in_library_pid, item.ingest_error = "in_library", in_library, None
+            item.save()
+            return item
     root = get_config("feed_root_collection") or "RSS_TRACK"
     try:
         collection = backend.zotero_collection(root, item.feed.name.replace("（已删除）", ""))
@@ -816,10 +1080,52 @@ def ingest(item_id: int, mode: str = "manual") -> Item:
     return item
 
 
+def zotero_fields(item: "Item") -> dict:
+    """Pageboygent 里这篇文章的著录信息，按 Zotero 字段名。"""
+    return {"DOI": item.doi or "", "abstractNote": item.abstract or "", "publicationTitle": clean_journal(item.journal) or "",
+            "date": item.published.strftime("%Y-%m-%d") if item.published else "", "url": item.link or "",
+            "creators": author_creators(item.authors_list())}
+
+
+def author_creators(authors: list[str]) -> list[dict]:
+    creators = []
+    for name in authors[:50]:
+        if "," in name:
+            last, first = [part.strip() for part in name.split(",", 1)]
+        else:
+            parts = name.strip().rsplit(" ", 1)
+            first, last = (parts[0], parts[1]) if len(parts) > 1 else ("", parts[0])
+        creators.append({"creatorType": "author", "firstName": first, "lastName": last})
+    return creators
+
+
+def _bad_creators(creators: list[dict]) -> bool:
+    """Zotero 里的作者明显不对：没有作者，或者有“作者”是纯数字 / 网址 / 粘连串（来自旧的 RSS 作者解析）。"""
+    if not creators:
+        return True
+    for c in creators:
+        name = " ".join(filter(None, [c.get("firstName"), c.get("lastName"), c.get("name")]))
+        if re.fullmatch(r"[\d\s-]+", name or "") or _looks_like_junk(name or ""):
+            return True
+    return False
+
+
+def sync_ingested_to_zotero(limit: int = 100) -> int:
+    """把补全后的信息写回已入库的 Zotero 条目：只填 Zotero 里空着的字段，或改正明显错误的
+    （刊名是 RSS 源标题、作者是乱码）。你在 Zotero 里改过的内容不动。返回更新的条目数。"""
+    updated = 0
+    since = dt.datetime.now() - dt.timedelta(days=ENRICH_WINDOW_DAYS * 2)
+    for item in list(Item.select().where((Item.status == "ingested") & Item.zotero_key.is_null(False)
+                                         & (Item.ingested_at > since)).limit(limit)):
+        if backend.zotero_patch_item(item.zotero_key, zotero_fields(item)):
+            updated += 1
+    return updated
+
+
 def auto_ingest(limit: int | None = None) -> int:
     limit = limit or int(get_config("feed_auto_ingest_per_run") or 10)
     done = 0
-    for item in Item.select().where((Item.band == "auto") & (Item.status == "scored")).order_by(Item.score.desc()).limit(limit):
+    for item in list(Item.select().where((Item.band == "auto") & (Item.status == "scored")).order_by(Item.score.desc()).limit(limit)):
         if ingest(item.id, mode="auto").status == "ingested":
             done += 1
     return done
@@ -933,46 +1239,83 @@ def generate_report(week: str | None = None, *, use_llm: bool = True) -> Report:
 # 心跳与状态
 # ---------------------------------------------------------------------------
 
-_state: dict[str, Any] = {"running": False, "last_run_at": None, "last_result": None, "last_error": None}
+_state: dict[str, Any] = {"running": False, "stage": None, "progress": None, "last_run_at": None, "last_result": None, "last_error": None}
+
+
+def _stage(result: dict, name: str, fn, *args):
+    """运行一个阶段；出错只记下来，不影响后面的阶段。遇到短暂的 database is locked 重试两次。"""
+    import traceback
+
+    _state.update(stage=name, progress=None)
+    for attempt in range(3):
+        try:
+            return fn(*args)
+        except peewee.OperationalError as exc:
+            if "locked" in str(exc) and attempt < 2:
+                time.sleep(2 + 3 * attempt)
+                continue
+            error = exc
+        except Exception as exc:  # noqa: BLE001
+            error = exc
+        break
+    where = traceback.extract_tb(error.__traceback__)[-1]
+    message = f"{name}：{type(error).__name__}: {error}（{Path(where.filename).name}:{where.lineno}）"
+    print(f"[paper_feed] {message}")
+    traceback.print_exception(error)
+    result["errors"].append(message)
+    return None
+
+
+def _fetch_all(result: dict, library_dois: dict) -> int:
+    fetched = 0
+    for feed in list(Feed.select().where(Feed.enabled == True)):  # noqa: E712
+        try:
+            new = fetch_feed(feed, library_dois)
+            feed.last_new_count, feed.last_error = new, None
+            fetched += new
+        except Exception as exc:
+            feed.last_error = f"{type(exc).__name__}: {exc}"
+            result["errors"].append(f"{feed.name}: {exc}")
+        feed.last_fetch_at = dt.datetime.now()
+        feed.save()
+    return fetched
 
 
 def run_once(force: bool = False) -> dict:
-    """抓取 → 补全 → 排序 → 自动入库 → 需要时生成上周周报。由 heartbeat 定时调用，也可在页面上手动触发。"""
+    """抓取 → 补全 → 排序 → 自动入库 → 需要时生成上周周报。由 heartbeat 定时调用，也可在页面上手动触发。
+    各阶段互相隔离：某一步出错只记下来，其余照常进行（例如补全失败不影响打分）。"""
     init_db()
     if not _run_lock.acquire(blocking=False):
         return {"skipped": "已在运行"}
     try:
         _state["running"] = True
-        library_dois = backend.library_doi_map()
         result: dict[str, Any] = {"fetched": 0, "errors": []}
-        for feed in Feed.select().where(Feed.enabled == True):  # noqa: E712
-            try:
-                new = fetch_feed(feed, library_dois)
-                feed.last_new_count, feed.last_error = new, None
-                result["fetched"] += new
-            except Exception as exc:
-                feed.last_error = f"{type(exc).__name__}: {exc}"
-                result["errors"].append(f"{feed.name}: {exc}")
-            feed.last_fetch_at = dt.datetime.now()
-            feed.save()
-        result["enriched"] = enrich_items()
-        result["thresholds"] = recalibrate()["auto"]
-        result["scored"] = score_items()
-        result["auto_ingested"] = auto_ingest()
-        result["pruned"] = prune_old_items()["deleted"]
+        library_dois = _stage(result, "读取文献库 DOI", backend.library_doi_map) or {}
+        result["fetched"] = _stage(result, "抓取", _fetch_all, result, library_dois) or 0
+        result["enriched"] = _stage(result, "补全摘要", enrich_items)
+        calibration = _stage(result, "校准门槛", recalibrate)
+        result["thresholds"] = calibration["auto"] if calibration else None
+        result["scored"] = _stage(result, "打分", score_items)
+        result["rescored"] = _stage(result, "重新评估待处理文章", rescore_pending)
+        result["auto_ingested"] = _stage(result, "自动入库", auto_ingest)
+        result["zotero_synced"] = _stage(result, "同步到 Zotero", sync_ingested_to_zotero)
+        pruned = _stage(result, "清理旧条目", prune_old_items)
+        result["pruned"] = pruned["deleted"] if pruned else None
         last_week = iso_week(dt.date.today() - dt.timedelta(days=7))
         if not Report.get_or_none(Report.week == last_week) and Item.select().where(
                 (Item.created_at >= week_range(last_week)[0]) & (Item.created_at < week_range(last_week)[1])).exists():
-            generate_report(last_week)
-            result["report"] = last_week
-        _state.update(last_run_at=dt.datetime.now().isoformat(timespec="seconds"), last_result=result, last_error=None)
+            if _stage(result, "生成周报", generate_report, last_week) is not None:
+                result["report"] = last_week
+        stage_errors = [e for e in result["errors"] if "：" in e and e.split("：", 1)[0] in STAGE_NAMES]
+        _state.update(last_run_at=dt.datetime.now().isoformat(timespec="seconds"), last_result=result,
+                      last_error="；".join(stage_errors) or None)
         return result
-    except Exception as exc:
-        _state["last_error"] = f"{type(exc).__name__}: {exc}"
-        raise
     finally:
-        _state["running"] = False
+        _state.update(running=False, stage=None, progress=None)
         _run_lock.release()
+
+
+STAGE_NAMES = {"读取文献库 DOI", "抓取", "补全摘要", "校准门槛", "打分", "重新评估待处理文章", "自动入库", "同步到 Zotero", "清理旧条目", "生成周报"}
 
 
 def retention_days() -> int:

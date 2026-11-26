@@ -29,7 +29,6 @@ GROUPS: list[tuple[str, str, list[tuple[str, str, bool]]]] = [
         ("zotero_id", "Zotero 用户 ID", True),
         ("zotero_key", "Zotero Web API Key", False),
         ("zotero_local_api_key", "Zotero 本地写入授权 Key", False),
-        ("zotero_storage_path", "Zotero storage 目录", False),
         ("pdf_require_collection", "缺 PDF 时放入的集合", False),
         ("tag_for_ai_notes", "AI 笔记标签", False),
         ("tag_for_quick_summary", "快速总结标签", False),

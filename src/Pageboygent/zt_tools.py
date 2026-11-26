@@ -25,7 +25,6 @@ ZOTERO_LOCAL_APP_NAME = "Pageboygent"
 
 zt_id = get_config("zotero_id")
 zt_key = get_config("zotero_key")
-zt_storage_path = get_config("zotero_storage_path")
 
 
 class ZoteroActionPaused(RuntimeError):
@@ -311,39 +310,17 @@ def get_pdf_from_item(item_key: str, first: bool = True) -> Dict[str, bytes] | s
         #print(pdfs)
     return pdfs
 
-def dump_file_from_local(file_key: str, save_path:str|Path):
-    """直接从Zotero的storage目录里拷贝文件,不经过HTTP,最快但依赖storage目录布局。"""
-    base_dir = Path(zt_storage_path).expanduser() / file_key.strip()
-    if not base_dir.exists():
-        raise FileNotFoundError(f"Attachment directory not found: {base_dir}")
-
-    files = [p for p in base_dir.iterdir() if p.is_file() and not p.name.startswith(".")]
-    assert len(files) == 1, f"Expected exactly one file for attachment {file_key}, but found {len(files)} in {base_dir}"
-    shutil.copy(str(files[0]), save_path)
-
 def dump_file_from_zotero(file_key: str, save_path:str|Path):
-    """经由Zotero本地API的 /file 接口下载附件内容,比直接读storage目录慢一点,但不用关心
-    storage目录内部结构,也能兼容链接式附件等 dump_file_from_local 处理不了的情况。"""
+    """经由 Zotero API 的 /file 接口下载附件内容。
+    不直接读 Zotero 的 storage 目录：那是 Zotero 的内部存储，布局随版本和同步方式变化，只通过 API 访问。"""
     f = zot.file(file_key)
     with open(save_path, "wb") as out:
         out.write(f)
 
-def dump_file(file_key: str, save_path:str|Path, priority: str = "local"):
-    if priority == "local":
-        first_try = dump_file_from_local
-        second_try = dump_file_from_zotero
-    else:
-        first_try = dump_file_from_zotero
-        second_try = dump_file_from_local
-    try:
-        first_try(file_key, save_path)
-    except Exception as e:
-        print(f"Failed to dump file from {priority} for {file_key} with error: {e}. Trying the other method.")
-        try:
-            second_try(file_key, save_path)
-        except Exception as e2:
-            print(f"Failed to dump file from the other method for {file_key} with error: {e2}.")
-            raise Exception(f"Failed to dump file for {file_key} using both methods.")
+
+def dump_file(file_key: str, save_path:str|Path, *args, **kwargs):
+    dump_file_from_zotero(file_key, save_path)
+
 
 def dump_pdf(pdf_key: str, save_path:str|Path, *args, **kwargs):
     dump_file(pdf_key, save_path, *args, **kwargs)

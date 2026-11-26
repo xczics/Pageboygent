@@ -45,6 +45,8 @@
     .fh-tag.ingested { background: #dcfce7; color: #166534; }
     .fh-tag.dismissed, .fh-tag.low { background: #f1f5f9; color: #64748b; }
     .fh-tag.noabs { background: #fee2e2; color: #991b1b; }
+    .fh-tag.rise { background: #e0f2fe; color: #075985; }
+    .fh-tag.fall { background: #f1f5f9; color: #64748b; }
     .fh-tag.explore { background: #ede9fe; color: #5b21b6; }
     .fh-actions { display: flex; gap: 4px; flex-wrap: wrap; justify-content: flex-end; }
     .fh-btn { border: 1px solid var(--line); background: #fff; border-radius: 8px; font-size: 12px; padding: 3px 9px; color: #374151; white-space: nowrap; }
@@ -187,6 +189,10 @@
     .fh-suggest .s { display: grid; grid-template-columns: 1fr auto; gap: 10px; align-items: center; padding: 7px 0; font-size: 13px; }
     .fh-suggest .s + .s { border-top: 1px solid #f5ecd0; }
     .fh-suggest .why { font-size: 11px; color: #a16207; }
+    .fh-cite { display: inline-block; font-size: 11.5px; line-height: 1.5; padding: 0 6px; margin: 0 1px; border-radius: 6px;
+               background: #eaf2fc; color: var(--blue-dark); text-decoration: none; vertical-align: 1px; white-space: nowrap; }
+    .fh-cite:hover { background: #d6e6f8; color: var(--blue-dark); text-decoration: none; }
+    .fh-cite.gone { background: #f1f5f9; color: #94a3b8; }
     .fh-empty { font-size: 13px; color: var(--muted); padding: 10px 0; }
     @media (max-width: 1150px) { .fh-grid.two { grid-template-columns: 1fr; } .fh-reader { grid-template-columns: 1fr; height: auto; } .fh-form { grid-template-columns: 1fr; } .fh-set-row { grid-template-columns: 1fr; } }
 </style>
@@ -251,6 +257,7 @@
         else if (it.band) { t += '<span class="fh-tag ' + esc(it.band) + '">' + esc(it.band_label) + '</span>'; }
         if (it.status === 'in_library') { t += '<span class="fh-tag ingested">库中已有</span>'; }
         if (!it.has_abstract) { t += '<span class="fh-tag noabs" title="RSS 和开放数据库都没有摘要（如 Elsevier 系期刊）：按“仅标题”单独打分、单独校准自动入库门槛">仅标题</span>'; }
+        if (it.rerank_note) { t += '<span class="fh-tag ' + (it.rerank_note.indexOf('上升') >= 0 ? 'rise' : 'fall') + '" title="已打过分的文章会随你的反馈、画像和文献库的变化重新评估；重新评估最多升到“待确认”，不会自动入库">' + (it.rerank_note.indexOf('上升') >= 0 ? '↑ ' : '↓ ') + esc(it.rerank_note) + '</span>'; }
         if (it.exploration) { t += '<span class="fh-tag explore" title="分数在边界附近，你的判断对校准最有用">请你判断</span>'; }
         return t;
     }
@@ -353,7 +360,7 @@
         h += '<div><div class="fh-card" style="margin-bottom:14px;"><div class="fh-card-head"><h3>运行状态</h3>' +
             '<button class="fh-btn primary" id="fh-run"' + (running || !feeds.length ? ' disabled' : '') + '>' + (running ? '抓取中…' : '立即抓取') + '</button></div>' +
             '<div class="fh-status"><div><div class="k">状态</div><div class="v"><span class="fh-dot ' + (running ? 'run' : (st.last_error ? 'err' : 'ok')) + '"></span>' +
-            (running ? '正在抓取与评分' : (st.last_error ? '上次运行出错' : '空闲')) + '</div></div>' +
+            (running ? (st.stage ? '正在' + esc(st.stage) + (st.progress ? ' · ' + esc(st.progress) : '') : '正在抓取与评分') : (st.last_error ? '上次运行出错' : '空闲')) + '</div></div>' +
             '<div><div class="k">上次抓取</div><div class="v">' + esc(st.last_fetch_at || '尚未抓取') + '</div></div>' +
             '<div><div class="k">下次抓取</div><div class="v">' + esc(st.next_fetch_at || '') + '</div></div>' +
             '<div><div class="k">抓取间隔 / 保留期</div><div class="v">' + esc(st.interval_hours) + ' 小时 / ' + esc(o.retention_days) + ' 天</div></div>' +
@@ -659,6 +666,27 @@
             '· 删组、合并、拆分只有你能做；AI 只会提建议。<br>' +
             '· 每组的说明 AI 只能提议新增，删和改只有你能做。你删掉的内容不会写进给 AI 的提示词，由程序把关、不让它再出现。<br>' +
             '· 删掉的行在回收站可随时恢复；普通删除 60 天后，如果新进的文献明显支持这一点，会原样拿出来再问你一次（再忽略则等待时间翻倍）；“不再提示”则永久屏蔽。</div></div></div></div>';
+        syncDescribeState(true);
+    }
+
+    let describePoll = null;
+    async function syncDescribeState(justStarted) {
+        // 后台的分组 / 提炼任务：页面重新进入时恢复“进行中”状态，任务结束后刷新画像
+        let st;
+        try { st = await api('/admin-api/feed/profile/describe'); } catch (e) { return; }
+        const btns = ['fh-p-describe', 'fh-p-regroup'].map((id) => document.getElementById(id)).filter(Boolean);
+        if (st.running) {
+            btns.forEach((b) => { b.disabled = true; });
+            const main = document.getElementById(st.regroup ? 'fh-p-regroup' : 'fh-p-describe') || btns[0];
+            if (main) { main.textContent = st.regroup ? '整理中…' : (prof && prof.facets.length ? 'AI 正在看…' : '分组并提炼中…（首次约 2-3 分钟）'); }
+            clearTimeout(describePoll);
+            describePoll = setTimeout(() => syncDescribeState(false), 3000);
+            return;
+        }
+        clearTimeout(describePoll);
+        describePoll = null;
+        if (st.error) { showError(st.error); }
+        if (!justStarted && btns.some((b) => b.disabled)) { renderProfile(); }
     }
 
     // ----- 行内编辑 -----
@@ -834,17 +862,12 @@
         if (t.id === 'fh-p-describe' || t.id === 'fh-p-regroup') {
             const regroup = t.id === 'fh-p-regroup';
             if (regroup && !window.confirm('整理分组：只重新划分你没动过的组（没改过说明、没停用、没调权重）。你动过的组原样保留。继续？')) { return; }
-            t.disabled = true; t.textContent = regroup ? '整理中…' : (prof && prof.facets.length ? 'AI 正在看…' : '分组并提炼中…（首次约 2-3 分钟）');
+            t.disabled = true;
             try {
-                await api('/admin-api/feed/profile/describe', { regroup });
-                const poll = async () => {
-                    const st = await api('/admin-api/feed/profile/describe');
-                    if (st.running) { setTimeout(poll, 3000); return; }
-                    if (st.error) { showError(st.error); }
-                    renderProfile();
-                };
-                setTimeout(poll, 3000);
-            } catch (err) { showError(err.message); }
+                const st = await api('/admin-api/feed/profile/describe', { regroup });
+                if (st.already_running) { showError('上一次分组 / 提炼还在进行，等它完成即可。'); }
+                syncDescribeState(false);
+            } catch (err) { showError(err.message); t.disabled = false; }
             return;
         }
         if (t.id === 'fh-p-save') {
@@ -945,7 +968,7 @@
         const ub = document.getElementById('fh-unread-badge'); ub.hidden = !unread; ub.textContent = unread > 99 ? '99+' : unread;
         const rb = document.getElementById('fh-report-badge'); rb.hidden = !(overview && overview.unread_report); rb.textContent = '新';
         const st = overview ? overview.status : {};
-        document.getElementById('fh-run-state').innerHTML = st.running ? '<span class="fh-dot run"></span>正在抓取与评分…' : (st.last_fetch_at ? '上次抓取 ' + esc(st.last_fetch_at) : '');
+        document.getElementById('fh-run-state').innerHTML = st.running ? '<span class="fh-dot run"></span>' + (st.stage ? '正在' + esc(st.stage) + (st.progress ? ' · ' + esc(st.progress) : '') : '正在抓取与评分…') : (st.last_fetch_at ? '上次抓取 ' + esc(st.last_fetch_at) : '');
     }
     async function refresh() {
         try { overview = await api('/admin-api/feed/overview'); } catch (e) { showError(e.message); return; }

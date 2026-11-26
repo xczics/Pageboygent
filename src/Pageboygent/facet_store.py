@@ -38,6 +38,7 @@ SMALL_GROUP = 5               # 少于这个篇数的组在页面上提示
 K_RANGE = (6, 30)             # 全库分组 / 整理分组时，分组数的选择范围
 
 _lock = threading.RLock()
+_describe_running = threading.Lock()   # 同一时间只跑一个 AI 提炼（页面点击与后台评分可能同时触发）
 _data_dir: Path | None = None
 _now: Callable[[], dt.datetime] = dt.datetime.now   # 测试时替换
 _claim_vector_cache: dict[str, np.ndarray] = {}
@@ -399,7 +400,18 @@ def describe(papers: list[dict], *, ask: Callable[[str, str], dict | None], embe
              quick_line: Callable[[str], str], pids: list[int] | None = None, vectors: np.ndarray | None = None,
              force: bool = False, max_calls: int = 40) -> dict:
     """为新组提炼论点；为新进了足够多文献的组提出新增建议；把满足条件的回收站内容重新放回建议区。
-    LLM 调用在锁外进行，结果再合并进最新的数据（期间用户的编辑不会被覆盖）。"""
+    LLM 调用在锁外进行，结果再合并进最新的数据（期间用户的编辑不会被覆盖）。
+    已有一个提炼在跑时直接返回当前数据，不重复调用模型。"""
+    if not _describe_running.acquire(blocking=False):
+        return load()
+    try:
+        return _describe(papers, ask=ask, embed=embed, quick_line=quick_line, pids=pids, vectors=vectors,
+                         force=force, max_calls=max_calls)
+    finally:
+        _describe_running.release()
+
+
+def _describe(papers: list[dict], *, ask, embed, quick_line, pids, vectors, force: bool, max_calls: int) -> dict:
     by_pid = {p["pid"]: p for p in papers}
     snapshot = load()
     jobs = []

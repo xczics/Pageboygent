@@ -20,7 +20,7 @@ from .write_queue import checkpoint as _write_queue_checkpoint
 from playhouse.migrate import SqliteMigrator, migrate
 import shutil
 import re
-from typing import List, Dict
+from typing import Any, List, Dict
 from whoosh.qparser import QueryParser
 from whoosh.fields import Schema, TEXT
 from whoosh.index import create_in, open_dir
@@ -170,31 +170,60 @@ class Paper(BaseModel):
     # 添加一个日期字段, 只有md_ready_date十天以后才被AI用来生成总结。
     md_ready_date = DateField(null=True)
     @classmethod
+    def find_by_doi(cls, doi: str | None) -> "Paper | None":
+        """按规范化后的 DOI 找已追踪的文献。没有 DOI 时不查（空和空不算重复）。"""
+        target = normalize_doi(doi)
+        if not target:
+            return None
+        for paper in cls.select().where(cls.doi.is_null(False) & (cls.doi != "")):
+            if normalize_doi(paper.doi) == target:
+                return paper
+        return None
+
+    @classmethod
     def trace_paper(cls, key_in_zotero: str):
-        # check if the paper already exists in the database
+        # 1) 已经按这个 key 追踪
         try:
             paper = cls.get(cls.key_in_zotero == key_in_zotero)
             paper.update_from_zotero()
             return paper
         except cls.DoesNotExist:  # type: ignore[attr-defined]
-            # if not, create a new entry
-            if not check_literature_exists(key_in_zotero):
-                raise Exception(f"Item with key {key_in_zotero} does not exist in Zotero or is not a supported literature type.")
-            title, date, first_author, abstract, doi = get_info(key_in_zotero, ["title", "date", "creators", "abstractNote", "DOI"])
-            year = None
-            if isinstance(date, str) and len(date) >= 4 and date[:4].isdigit():
-                year = int(date[:4])
-            first_author = first_author_from_creators(first_author)
-            paper = cls.create(
-                key_in_zotero=key_in_zotero,
-                title=title,
-                year=year,
-                first_author=first_author,
-                abstract=abstract,
-                doi=doi
-            )
-            paper.save()
-            return paper
+            pass
+        # 2) 之前已识别为某篇已追踪文献的重复条目
+        alias = PaperAlias.get_or_none(PaperAlias.key == key_in_zotero)
+        if alias is not None:
+            return alias.paper
+        if not check_literature_exists(key_in_zotero):
+            raise Exception(f"Item with key {key_in_zotero} does not exist in Zotero or is not a supported literature type.")
+        title, date, first_author, abstract, doi = get_info(key_in_zotero, ["title", "date", "creators", "abstractNote", "DOI"])
+        # 3) 按 DOI 查重（没有 DOI 不查）：同一篇文献在 Zotero 里有两个条目时，不再建第二条记录
+        same = cls.find_by_doi(doi)
+        if same is not None:
+            if _zotero_item_exists(str(same.key_in_zotero)):
+                PaperAlias.create(key=key_in_zotero, paper=same, doi=normalize_doi(doi))
+                print(f"⚠️ Zotero 条目 {key_in_zotero} 与已追踪的 {same.key_in_zotero}（{same.title[:60]}）DOI 相同，"
+                      f"视为同一篇，不重复追踪。建议在 Zotero 里合并这两个重复条目。")
+            else:
+                # 旧条目在 Zotero 里已经没有了（被删后重新导入等）：直接改用新 key
+                print(f"Paper {same.id}: Zotero key {same.key_in_zotero} -> {key_in_zotero}（DOI 相同，旧条目已不在 Zotero）")
+                same.key_in_zotero = key_in_zotero
+                same.save()
+                same.update_from_zotero()
+            return same
+        year = None
+        if isinstance(date, str) and len(date) >= 4 and date[:4].isdigit():
+            year = int(date[:4])
+        first_author = first_author_from_creators(first_author)
+        paper = cls.create(
+            key_in_zotero=key_in_zotero,
+            title=title,
+            year=year,
+            first_author=first_author,
+            abstract=abstract,
+            doi=doi
+        )
+        paper.save()
+        return paper
     @classmethod
     def update_all(cls):
         for paper in cls.select():
@@ -437,6 +466,9 @@ class Theme(BaseModel):
         existing_papers = Paper.select().join(ThemePaper).where(ThemePaper.theme == self)
         # 做两个检查，1，对于已经存在的paper, 如果它的key不在all_keys中，说明这个paper不应该再绑定这个主题了；2，对于all_keys中的key，如果它没有被绑定这个主题，说明需要新增一个绑定。
         existing_keys = set(paper.key_in_zotero for paper in existing_papers)
+        # 重复条目（DOI 相同、已并到某篇文献上的别名 key）：集合里出现别名 key，等于出现了它对应的那篇
+        alias_of = {a.key: a.paper.key_in_zotero for a in PaperAlias.select(PaperAlias, Paper).join(Paper)}
+        all_keys = {alias_of.get(key, key) for key in all_keys}
         no_longer_relevant_keys = existing_keys - all_keys
         for paper in existing_papers:
             if paper.key_in_zotero in no_longer_relevant_keys:
@@ -454,6 +486,8 @@ class Theme(BaseModel):
                 paper = Paper.get(Paper.key_in_zotero == key)
             except Paper.DoesNotExist: #type: ignore[attr-defined]
                 paper = Paper.trace_paper(key)
+            if ThemePaper.get_or_none((ThemePaper.theme == self) & (ThemePaper.paper == paper)) is not None:
+                continue  # 按 DOI 并到了已绑定的文献上
             ThemePaper.create(theme=self, paper=paper)
             print(f"Added paper '{paper.title}' to theme '{self.name}' because it is in the relevant collections.")
     
@@ -890,12 +924,37 @@ class TracedCollection(BaseModel):
         return count
 
 
+class PaperAlias(BaseModel):
+    """Zotero 里与已追踪文献 DOI 相同的重复条目：不另建记录，key 记在这里指向那篇文献。"""
+    key = CharField(unique=True)
+    paper = ForeignKeyField(Paper, backref="aliases", on_delete="CASCADE")
+    doi = CharField(null=True)
+
+
+_DOI_PREFIX = re.compile(r"^(?:https?://(?:dx\.)?doi\.org/|doi:\s*)", re.I)
+
+
+def normalize_doi(doi: Any) -> str | None:
+    """DOI 规范化：去掉 https://doi.org/、doi: 前缀和首尾空白，小写。空值返回 None（不参与查重）。"""
+    text = _DOI_PREFIX.sub("", str(doi or "").strip()).strip().rstrip(".;,").lower()
+    return text if text.startswith("10.") else None
+
+
+def _zotero_item_exists(key: str) -> bool:
+    try:
+        return bool(check_literature_exists(key))
+    except Exception:
+        return False
+
+
 # check if need to create tables
 if not Paper.table_exists():
     with BaseModel._meta.database: #type: ignore
         BaseModel._meta.database.create_tables([Paper, PDFStatus, MDStatus, Theme, ThemePaper]) #type: ignore
 if not TracedCollection.table_exists():
     TracedCollection.create_table()
+if not PaperAlias.table_exists():
+    PaperAlias.create_table()
 
 
 def check_pdf2md_tasks():
@@ -943,6 +1002,9 @@ def add_one_paper_to_rag():
 
 def heart_beat():
     # 自动化任务
+    from . import zotero_merge
+
+    zotero_merge.maybe_reconcile()  # 每天一次：Zotero 里合并重复条目后，把旧 key 的记录并到主条目上
     add_one_paper_to_rag()
     note_storage.sync_pending_notes()
     check_pdf2md_tasks()

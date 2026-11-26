@@ -103,10 +103,18 @@ class FakeFeedBackend(paper_feed.FeedBackend):
 
     def zotero_add_item(self, collection_key, item):
         self.zotero.append((collection_key, item["title"]))
+        self.added.append(item)
         return "ZKEY0001"
 
     def track_in_pageboygent(self, zotero_key, root):
         self.tracked.append((zotero_key, root))
+
+    added: list = []
+    patched: list = []
+
+    def zotero_patch_item(self, key, fields):
+        self.patched.append((key, fields))
+        return True
 
 
 @pytest.fixture
@@ -245,8 +253,20 @@ def test_title_only_items_compare_against_library_titles(feed_env):
                                             title_only=True)
     as_full = feed_ranker.compute_features(model, rb, vec=vec, text="zinc moon", authors=[], positives=[], negatives=[])
     assert as_title["info"] == "title" and as_full["info"] == "abstract"
-    # 标题对标题比较、按库内标题之间的相近程度换算：只有标题的文章不再被系统性压分
-    assert as_title["dense"] >= as_full["dense"]
+    # 标题对标题比较、按库内标题自己的锚点换算：只有标题的文章不再被系统性压分
+    assert as_title["dense"] >= as_full["dense"] - 0.05
+    assert model.anchors["title"] != model.anchors["abstract"]
+
+
+def test_unrelated_negative_feedback_does_not_penalize(feed_env):
+    """只是“随便一篇”那样像被 👎 的文章：不扣分；很像才扣分。"""
+    model, rb, _ = paper_feed.library_model(describe=False)
+    vec = fake_vec("zinc isotope lunar evaporation")
+    far = feed_ranker.compute_features(model, rb, vec=vec, text="", authors=[], positives=[],
+                                       negatives=[fake_vec("bird migration")])
+    near = feed_ranker.compute_features(model, rb, vec=vec, text="", authors=[], positives=[],
+                                        negatives=[fake_vec("zinc isotope lunar evaporation moon")])
+    assert far["feedback"] == 0.0 and near["feedback"] < -0.5
 
 
 def test_enrichment_by_title_and_retry_until_abstract_arrives(feed_env):
@@ -304,3 +324,118 @@ def test_library_self_grouping_finds_topics_and_keeps_ids_stable():
     for cluster in second:
         assert {old_of[p] for p in cluster["pids"] if p in old_of} == {cluster["id"]}
     assert any({61, 62}.issubset(c["pids"]) for c in second)
+
+
+def test_run_survives_concurrent_writer_during_fetch(feed_env, monkeypatch):
+    """抓取各订阅源期间另一线程写库（例如画像页的“分组”在写向量缓存）：不能报 database is locked。"""
+    import threading
+
+    paper_feed.add_feed("A", "https://example.org/a")
+    paper_feed.add_feed("B", "https://example.org/b")
+    original = paper_feed.fetch_feed
+
+    def fetch_with_other_writer(feed, dois):
+        t = threading.Thread(target=lambda: paper_feed.LibraryVector.replace(
+            pid=feed.id, kind="full", digest="x", vec=b"\0").execute())
+        t.start()
+        t.join()
+        return original(feed, dois)
+
+    monkeypatch.setattr(paper_feed, "fetch_feed", fetch_with_other_writer)
+    result = paper_feed.run_once()
+    assert not [e for e in result["errors"] if "locked" in e], result["errors"]
+    assert all(f.last_fetch_at for f in paper_feed.Feed.select())
+
+
+def test_ingest_rechecks_doi_but_never_matches_empty_doi(feed_env, monkeypatch):
+    feed = paper_feed.add_feed("Icarus", "https://example.org/rss")
+    paper_feed.fetch_feed(feed, {})
+    zinc = paper_feed.Item.get(paper_feed.Item.title.contains("Zinc"))
+    bird = paper_feed.Item.get(paper_feed.Item.title.contains("Bird"))
+    assert bird.doi is None
+    # 抓取之后，文献库里有了这篇（DOI 写法不同）；另有一篇没有 DOI 的库内文献
+    monkeypatch.setattr(feed_env, "library_doi_map", lambda: {"10.1016/j.icarus.2026.1": 42})
+    item = paper_feed.ingest(zinc.id)
+    assert item.status == "in_library" and item.in_library_pid == 42 and feed_env.zotero == []
+    item = paper_feed.ingest(bird.id)            # 没有 DOI：不查重，照常入库
+    assert item.status == "ingested" and feed_env.zotero == [("RSS_TRACK/Icarus", "Bird migration in Europe")]
+
+
+def test_split_authors_handles_wiley_and_rejects_glued_strings():
+    assert paper_feed.split_authors([{"name": "N. Agarwal, \nT. A. Smith, \nL. C. Slivinski"}]) == ["N. Agarwal", "T. A. Smith", "L. C. Slivinski"]
+    glued = "M. Colin MarvinAlex GleasonClément Narteauahttps://ror.org/00f54p054Department of Earth Sciences"
+    assert paper_feed.split_authors(glued) == []          # 无法可靠拆分：留空，交给 OpenAlex 补全
+    assert paper_feed.split_authors("Sean N. Raymond, Alice Smith") == ["Sean N. Raymond", "Alice Smith"]
+    assert paper_feed.split_authors([{"name": "Donald J. DePaolo"}, {"name": "William F. McDonough"}]) == ["Donald J. DePaolo", "William F. McDonough"]
+
+
+def test_report_citations_become_clickable_chips(feed_env):
+    from Pageboygent import ui
+
+    feed = paper_feed.add_feed("Icarus", "https://example.org/rss")
+    paper_feed.fetch_feed(feed, {})
+    zinc = paper_feed.Item.get(paper_feed.Item.title.contains("Zinc"))
+    zinc.authors = json.dumps(["Sean N. Raymond", "Alice Smith"])
+    zinc.save()
+    html = ui._report_overview_html(f"锌同位素蒸发 [F{zinc.id}]，另见 [F99999]。")
+    assert f'data-open="{zinc.id}"' in html and "Raymond 等" in html and "[F" not in html
+    assert "已清理" in html                                  # 已被清理的条目不留下裸编号
+
+
+
+def test_journal_names_are_cleaned():
+    assert paper_feed.clean_journal("ScienceDirect Publication: Icarus") == "Icarus"
+    assert paper_feed.clean_journal("Wiley: Journal of Geophysical Research: Planets: Table of Contents") == "Journal of Geophysical Research: Planets"
+    assert paper_feed.clean_journal("Earth and Planetary Science Letters") == "Earth and Planetary Science Letters"
+    assert paper_feed._bad_creators([{"creatorType": "author", "firstName": "", "lastName": "93106"}])
+    assert paper_feed._bad_creators([])
+    assert not paper_feed._bad_creators([{"creatorType": "author", "firstName": "James M D", "lastName": "Day"}])
+
+
+def test_title_only_item_is_enriched_before_ingest(feed_env, monkeypatch):
+    feed = paper_feed.add_feed("Icarus", "https://example.org/rss")
+    paper_feed.fetch_feed(feed, {})
+    bird = paper_feed.Item.get(paper_feed.Item.title.contains("Bird"))
+    assert bird.doi is None and bird.authors_list() == []
+    feed_env.title_hits = {bird.title: {"doi": "10.1/bird", "abstract": "", "source": "none",
+                                        "authors": ["Jane Doe"], "journal": "Icarus", "published": "2026-11-20"}}
+    feed_env.added.clear()
+    paper_feed.ingest(bird.id)                      # 入库前当场补全：DOI、作者、刊名、日期一并写进 Zotero
+    sent = feed_env.added[-1]
+    assert sent["doi"] == "10.1/bird" and sent["authors"] == ["Jane Doe"] and sent["journal"] == "Icarus"
+    assert sent["published"] == TODAY.strftime("%Y-%m-%d")   # RSS 自带日期：补全只填缺的，不覆盖
+    assert paper_feed.sync_ingested_to_zotero() == 1 and feed_env.patched[-1][1]["DOI"] == "10.1/bird"
+
+
+def _pending_item(feed, title, abstract, band="low"):
+    vec = fake_vec(f"{title}\n{abstract}")
+    return paper_feed.Item.create(feed=feed, guid=title, dedupe_key=f"title:{title}", title=title, abstract=abstract,
+                                  info="abstract", vector=feed_ranker.vector_to_blob(vec), features="{}",
+                                  base_score=0.0, score=0.0, band=band, status="scored")
+
+
+def test_rescoring_promotes_at_most_to_confirm_and_reuses_llm(feed_env):
+    feed = paper_feed.add_feed("Icarus", "https://example.org/rss")
+    long_text = "We measured zinc isotope evaporation in lunar samples and moon basalts. " * 4
+    item = _pending_item(feed, "Zinc isotope evaporation in lunar samples", long_text)
+    result = paper_feed.rescore_pending()
+    item = paper_feed.Item.get_by_id(item.id)
+    assert result["judged"] == 1 and item.llm_score == 9          # 新进入短名单：补做 LLM 判断
+    assert item.band == "confirm" and item.status == "scored"     # 分数够自动入库，但重新评估最多到“待确认”
+    assert item.rerank_note and item.rerank_note.endswith("上升")
+    calls = len(feed_env.client.calls)
+    assert paper_feed.rescore_pending()["judged"] == 0             # 画像没变：沿用原判断，不再花钱
+    assert len(feed_env.client.calls) == calls
+
+
+def test_rescoring_reflects_new_negative_feedback(feed_env):
+    feed = paper_feed.add_feed("Icarus", "https://example.org/rss")
+    text = "Zinc isotope evaporation on the moon. " * 8
+    target = _pending_item(feed, "Zinc isotope evaporation on the moon", text, band="confirm")
+    paper_feed.rescore_pending()
+    before = json.loads(paper_feed.Item.get_by_id(target.id).features)["feedback"]
+    disliked = _pending_item(feed, "Zinc isotope evaporation on the moon again", text)
+    paper_feed.set_feedback(disliked.id, -1)
+    paper_feed.rescore_pending()
+    after = json.loads(paper_feed.Item.get_by_id(target.id).features)["feedback"]
+    assert after < before                                          # 👎 了一篇很像的，这篇随之扣分

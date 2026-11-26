@@ -345,13 +345,6 @@ def _initialize_default_configs() -> None:
         description="OpenXLab Secret Access Key paired with mineru_access_key",
     )
     register_config(
-        "zotero_storage_path",
-        default=str(Path.home() / "Zotero" / "storage"),
-        type_=str,
-        env_name=f"{ENV_PREFIX}ZOTERO_STORAGE_PATH",
-        description="Path to Zotero storage directory",
-    )
-    register_config(
         "mineru_url",
         type_=str,
         default="http://127.0.0.1:40080",
@@ -587,7 +580,6 @@ class Settings:
     zotero_key: str | None = None
     zotero_id: str | None = None
     mineru_token: str | None = None
-    zotero_storage_path: str | None = None
     mineru_url: str = "http://127.0.0.1:40080"
     ds_api_key: str | None = None
     ds_url: str = "https://api.deepseek.com"
@@ -647,7 +639,6 @@ def load_settings(
         zotero_key=_normalize_text(get_config("zotero_key", overrides.get("zotero_key"))),
         zotero_id=_normalize_text(get_config("zotero_id", overrides.get("zotero_id"))),
         mineru_token=_normalize_text(get_config("mineru_token", overrides.get("mineru_token"))),
-        zotero_storage_path=_normalize_path_text(get_config("zotero_storage_path", overrides.get("zotero_storage_path"))),
         mineru_url=_normalize_text(get_config("mineru_url", overrides.get("mineru_url"))) or "http://127.0.0.1:40080",
         ds_api_key=_normalize_text(get_config("ds_api_key", overrides.get("ds_api_key"))),
         ds_url=_normalize_text(get_config("ds_url", overrides.get("ds_url"))) or "https://api.deepseek.com",

@@ -66,7 +66,7 @@ def run_read_checks(zt) -> bool:
     _hr("只读检查 (read-only checks)")
     ok = True
 
-    print(f"[config] zotero_id={zt.zt_id!r}  zotero_storage_path={zt.zt_storage_path!r}")
+    print(f"[config] zotero_id={zt.zt_id!r}")
     print(f"[config] workstation_dir={zt.get_config('workstation_dir')!r}")
     print(f"[client] zot.local={zt.zot.local}  zot.endpoint={zt.zot.endpoint}")
     print(f"[client] local_api_key cached: {bool(zt.zot.local_api_key)}")
@@ -193,19 +193,12 @@ def run_write_checks(zt, auto_yes: bool, keep: bool) -> bool:
             assert found_key == att_key, "check_md_full_text_exits 没有找到刚上传的附件"
             print("[OK] check_md_full_text_exits 能找到刚上传的附件")
 
-            download_via_disk = tmp_dir_path / "roundtrip_disk.md"
-            zt.dump_file_from_local(att_key, download_via_disk)
-            assert download_via_disk.read_text(encoding="utf-8") == md_content, (
-                "dump_file_from_local 读回的内容和原始内容不一致"
-            )
-            print("[OK] dump_file_from_local 内容往返一致")
-
             download_via_api = tmp_dir_path / "roundtrip_api.md"
             zt.dump_file_from_zotero(att_key, download_via_api)
             assert download_via_api.read_text(encoding="utf-8") == md_content, (
                 "dump_file_from_zotero 读回的内容和原始内容不一致"
             )
-            print("[OK] dump_file_from_zotero (本地API /file 接口) 内容往返一致")
+            print("[OK] dump_file_from_zotero (API /file 接口) 内容往返一致")
 
         # 4. collection迁移: 新建第二个临时collection, 把item加过去再挪走
         col2_result = zt._perform_local_write(
