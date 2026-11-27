@@ -4,8 +4,8 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "pageboygent"
-version = "0.1.0"
-description = "A local research assistant for your Zotero library: full-text RAG, agentic literature search, AI reviews, deep search and RSS paper tracking."
+version = "0.0.1"
+description = "Pageboygent can Arranging, Gathering and Exploring literature, help you Better Organize your Growing Expository Notes and Track research trends."
 readme = "README.md"
 license = "GPL-3.0-or-later"
 license-files = ["LICENSE"]

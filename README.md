@@ -7,7 +7,9 @@
 [![CI](https://github.com/xczics/Pageboygent/actions/workflows/ci.yml/badge.svg)](https://github.com/xczics/Pageboygent/actions/workflows/ci.yml)
 [![PyPI](https://img.shields.io/pypi/v/pageboygent)](https://pypi.org/project/pageboygent/)
 
-**Pageboygent** turns your Zotero library into a searchable, conversational research workspace. It extracts the full
+**Pageboygent** can **Arranging, Gathering and Exploring** literature, help you **Better Organize your Growing Expository Notes and Track research trends**.
+
+Pageboygent turns your Zotero library into a searchable, conversational research workspace. It extracts the full
 text of your PDFs, writes AI summaries back into Zotero, indexes everything for retrieval, and adds agentic literature
 search, AI-written reviews, a search-engine-style "deep search" and RSS paper tracking on top, all in a local web app.
 
@@ -164,7 +166,7 @@ Releases are published to PyPI by GitHub Actions ([.github/workflows/release.yml
 PyPI Trusted Publishing. To release: bump `version` in `pyproject.toml`, commit, then tag and push:
 
 ```bash
-git tag v0.1.1 && git push origin v0.1.1
+git tag v0.0.2 && git push origin v0.0.2
 ```
 
 The workflow checks that the tag matches the version, runs the tests, builds, publishes to PyPI and creates a GitHub
