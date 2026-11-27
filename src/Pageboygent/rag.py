@@ -380,7 +380,10 @@ def bm25_retrieve(
 
     if not query.strip():
         return []
-    sync_bm25_index()
+    try:
+        sync_bm25_index()
+    except Exception as exc:  # noqa: BLE001  索引正被别的进程写入等：用现有索引照常检索
+        print(f"[rag] BM25 index sync skipped: {exc}")
     with _bm25_lock:
         ix = _get_bm25_index()
     parsed = QueryParser("content", ix.schema, group=OrGroup.factory(0.9)).parse(query)

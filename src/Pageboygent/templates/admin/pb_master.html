@@ -1,4 +1,5 @@
 {% extends 'admin/base.html' %}
+{% import 'admin/layout.html' as layout with context %}
 {#
   Pageboygent 的页面骨架：
   - 顶部导航：文献追踪 / AI 对话 / AI 文献检索 / AI 综述 / 数据库；主页（深度搜索）由左上角 “Pageboygent” 进入（由 pb_top_nav 提供）
@@ -27,6 +28,15 @@
     .pb-lang a { color: rgba(255,255,255,.55); font-size: 12px; font-weight: 600; padding: 3px 7px; border-radius: 6px; text-decoration: none; }
     .pb-lang a:hover { color: #fff; }
     .pb-lang a.active { color: #fff; background: rgba(255,255,255,.14); }
+    /* 统一的页面框架：导航栏铺满全宽，导航栏与页面内容共用左右边距 --pb-gutter（logo 与页面左缘对齐） */
+    :root { --pb-gutter: 20px; --pb-nav-h: 56px; }
+    body { background: #fff; }
+    .pb-topbar { position: sticky; top: 0; z-index: 1030; min-height: var(--pb-nav-h);
+                 padding: 0 var(--pb-gutter); margin: 0; border-radius: 0; }
+    .pb-topbar .navbar-collapse { align-items: center; }
+    .pb-page { padding: 12px var(--pb-gutter) 0 var(--pb-gutter); }
+    @media (max-width: 700px) { :root { --pb-gutter: 12px; } }
+
     .navbar .pb-brand {
         font-weight: 700;
         letter-spacing: 0.3px;
@@ -122,6 +132,27 @@
         margin: 0 4px;
     }
 </style>
+{% endblock %}
+
+{% block page_body %}
+<nav class="navbar navbar-expand-lg navbar-dark bg-dark pb-topbar" role="navigation">
+    <button class="navbar-toggler" type="button" data-toggle="collapse" data-target="#admin-navbar-collapse"
+            aria-controls="admin-navbar-collapse" aria-expanded="false" aria-label="Toggle navigation">
+        <span class="navbar-toggler-icon"></span>
+    </button>
+    {{ self.brand() }}
+    <div class="collapse navbar-collapse" id="admin-navbar-collapse">
+        {{ self.main_menu() }}
+        {{ self.menu_links() }}
+    </div>
+</nav>
+<div class="pb-page">
+    {% block messages %}{{ layout.messages() }}{% endblock %}
+    {# Flask-Admin 的表单规则渲染需要这个上下文 #}
+    {% set render_ctx = h.resolve_ctx() %}
+    {{ self.page_title() }}
+    {% block body %}{% endblock %}
+</div>
 {% endblock %}
 
 {% block brand %}

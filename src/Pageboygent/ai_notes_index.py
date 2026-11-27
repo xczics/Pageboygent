@@ -146,7 +146,10 @@ def search(query: str, *, mode: str = "bm25", kinds: list[str] | None = None, li
     if not (query or "").strip():
         return []
     if index_dir is None:
-        sync()
+        try:
+            sync()
+        except Exception as exc:  # noqa: BLE001  索引正被别的进程写入等：用现有索引照常检索
+            print(f"[ai_notes_index] sync skipped: {exc}")
     ix = _get_index(index_dir)
     group = AndGroup if mode == "keywords" else OrGroup.factory(0.9)
     parsed = QueryParser("content", ix.schema, group=group).parse(query)
