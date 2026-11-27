@@ -2228,6 +2228,24 @@ def create_storage_admin_app() -> Flask:
     def index_redirect():
         return redirect(url_for("admin.index"))
 
+    @app.get("/favicon.ico")
+    def favicon():
+        """浏览器（尤其 Safari）会直接请求站点根目录的 /favicon.ico。"""
+        return app.send_static_file("favicon.ico")
+
+    _asset_versions: dict[str, str] = {}
+
+    def pb_static(filename: str) -> str:
+        """静态文件地址带上内容指纹（?v=…）：换了 logo 等文件后浏览器会重新下载，不会一直用旧缓存。"""
+        if filename not in _asset_versions:
+            import hashlib
+
+            path = Path(app.static_folder or "") / filename
+            _asset_versions[filename] = hashlib.md5(path.read_bytes()).hexdigest()[:8] if path.exists() else "0"
+        return url_for("static", filename=filename, v=_asset_versions[filename])
+
+    app.jinja_env.globals["pb_static"] = pb_static
+
     @app.get("/admin/rag/")
     @app.get("/admin/rag")
     def rag_page_moved():

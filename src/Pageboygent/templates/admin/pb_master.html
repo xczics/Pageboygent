@@ -10,9 +10,10 @@
 
 {% block head %}
 {{ super() }}
-<link rel="icon" type="image/svg+xml" href="{{ url_for('static', filename='logo.svg') }}">
-<link rel="icon" type="image/png" sizes="32x32" href="{{ url_for('static', filename='favicon-32.png') }}">
-<link rel="apple-touch-icon" href="{{ url_for('static', filename='apple-touch-icon.png') }}">
+{# 浏览器标签图标：ICO（兼容所有浏览器，Safari 不认 SVG 图标）在前，SVG（高清）其次；地址带内容指纹，换图后不会用旧缓存 #}
+<link rel="icon" href="{{ pb_static('favicon.ico') }}" sizes="16x16 32x32 48x48">
+<link rel="icon" type="image/svg+xml" href="{{ pb_static('logo.svg') }}">
+<link rel="apple-touch-icon" href="{{ pb_static('apple-touch-icon.png') }}">
 <script>
     // 界面多语言：tr('中文原文', {占位: 值})。中文界面时译文表为空、原样返回；查不到译文也退回中文
     window.PB_LANG = {{ pb_lang()|tojson }};
@@ -156,7 +157,7 @@
 {% endblock %}
 
 {% block brand %}
-<a class="navbar-brand pb-brand" href="{{ pb_home_url() }}"><img class="pb-brand-logo" src="{{ url_for('static', filename='logo.svg') }}" alt="" width="26" height="26">Pageboygent</a>
+<a class="navbar-brand pb-brand" href="{{ pb_home_url() }}"><img class="pb-brand-logo" src="{{ pb_static('logo.svg') }}" alt="" width="26" height="26">Pageboygent</a>
 {% endblock %}
 
 {% block main_menu %}

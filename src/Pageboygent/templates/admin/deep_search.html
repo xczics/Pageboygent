@@ -128,7 +128,7 @@
     <div class="ds-setup">{{ _('还缺少必填配置：') }}{{ missing_settings|join(_('home:list_sep')) }} · <a href="{{ url_for('tracking.index', view='settings') }}">{{ _('home:settings.go') }}</a></div>
     {% endif %}
     <div id="ds-landing" class="ds-landing" hidden>
-        <img class="ds-mascot" src="{{ url_for('static', filename='logo.svg') }}" alt="" width="104" height="104">
+        <img class="ds-mascot" src="{{ pb_static('logo.svg') }}" alt="" width="104" height="104">
         <div class="ds-logo">{{ _('深度') }}<span>{{ _('搜索') }}</span></div>
         <form class="ds-box" data-box autocomplete="off">
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
