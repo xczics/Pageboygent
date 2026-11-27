@@ -28,16 +28,16 @@ zt_tools.py 的人工烟雾测试脚本 (smoke test)。
 
 用法:
     # 只读检查(安全, 推荐先跑这个)
-    python -m Pageboygent.zt_smoke_test
+    python -m experimental.zt_smoke_test
 
     # 完整测试, 包含写入(会先打印将要做的事情, 要求你确认)
-    python -m Pageboygent.zt_smoke_test --write
+    python -m experimental.zt_smoke_test --write
 
     # 完整测试 + 跳过确认(比如接入自动化脚本时用)
-    python -m Pageboygent.zt_smoke_test --write --yes
+    python -m experimental.zt_smoke_test --write --yes
 
     # 完整测试, 但保留临时item/collection不清理, 方便你自己去Zotero里肉眼检查
-    python -m Pageboygent.zt_smoke_test --write --yes --keep
+    python -m experimental.zt_smoke_test --write --yes --keep
 
 跑之前请确认: Zotero桌面客户端正在运行, 且 设置 > 高级 > "允许其他应用与Zotero通信"
 已经打开。
@@ -296,7 +296,7 @@ def main() -> int:
     parser.add_argument("--keep", action="store_true", help="写入测试结束后不清理临时数据,方便手动检查")
     args = parser.parse_args()
 
-    from . import zt_tools as zt  # 延迟导入: 导入时会连接/初始化本地Zotero客户端
+    from Pageboygent import zt_tools as zt  # 延迟导入: 导入时会连接/初始化本地Zotero客户端
 
     read_ok = run_read_checks(zt)
     if not read_ok:

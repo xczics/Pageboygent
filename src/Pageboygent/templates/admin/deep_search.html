@@ -1,0 +1,477 @@
+{% extends 'admin/master.html' %}
+
+{% block head %}
+{{ super() }}
+<style>
+    .ds { --line: #e5e7eb; --muted: #6b7280; --text: #1f2937; --link: #1a4fb5; --link-visited: #5b3fa8; --green: #1e6b3a;
+          --hl: #111827; --chip: #f1f5f9; --blue: #2a78d6;
+          box-sizing: border-box; width: 100vw; max-width: 100vw; margin-left: calc(50% - 50vw); margin-right: calc(50% - 50vw);
+          color: var(--text); min-height: calc(100vh - 70px); }
+    .ds * { box-sizing: border-box; }
+
+    /* 搜索框（落地页大号、结果页顶部小号共用） */
+    .ds-setup { margin: 10px 24px 0 24px; padding: 9px 14px; border-radius: 10px; background: #fef2f2; border: 1px solid #fecaca; color: #991b1b; font-size: 13px; }
+    .ds-setup a { color: #991b1b; font-weight: 600; text-decoration: underline; }
+    .ds-box { position: relative; display: flex; align-items: center; gap: 8px; background: #fff; border: 1px solid #dfe1e5;
+              border-radius: 24px; padding: 0 8px 0 16px; height: 46px; transition: box-shadow .15s, border-color .15s; }
+    .ds-box:hover, .ds-box.focus { box-shadow: 0 1px 6px rgba(32,33,36,.18); border-color: rgba(223,225,229,0); }
+    .ds-box.open { border-radius: 24px 24px 0 0; box-shadow: 0 1px 6px rgba(32,33,36,.18); border-color: transparent; }
+    .ds-box svg { flex: none; color: #9aa0a6; }
+    .ds-box input { flex: 1; min-width: 0; border: none; outline: none; font-size: 16px; color: var(--text); background: transparent; height: 100%; }
+    .ds-clear { border: none; background: none; color: #70757a; font-size: 20px; line-height: 1; padding: 4px 8px; border-radius: 50%; }
+    .ds-clear:hover { background: #f1f3f4; }
+    .ds-go { border: none; background: var(--blue); color: #fff; border-radius: 18px; height: 34px; padding: 0 16px; font-size: 14px; font-weight: 600; }
+    .ds-go:hover { background: #1c5cab; }
+    .ds-suggest { position: absolute; left: -1px; right: -1px; top: 45px; background: #fff; border-radius: 0 0 24px 24px;
+                  box-shadow: 0 4px 6px rgba(32,33,36,.18); padding: 6px 0 10px 0; z-index: 30; border-top: 1px solid #eef0f2; }
+    .ds-suggest div { display: flex; gap: 12px; align-items: center; padding: 6px 18px; font-size: 14px; cursor: pointer; }
+    .ds-suggest div.active, .ds-suggest div:hover { background: #f1f3f4; }
+    .ds-suggest .k { font-size: 11px; color: #70757a; border: 1px solid #e3e5e8; border-radius: 4px; padding: 0 5px; flex: none; }
+    .ds-suggest .t { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .ds-suggest .n { margin-left: auto; color: #9aa0a6; font-size: 12px; flex: none; }
+
+    /* 落地页 */
+    .ds-landing { display: flex; flex-direction: column; align-items: center; padding-top: 10vh; }
+    .ds-mascot { width: 104px; height: 104px; border-radius: 24px; margin-bottom: 18px; box-shadow: 0 6px 18px rgba(42,120,214,.22);
+                 transition: transform .2s ease; }
+    .ds-mascot:hover { transform: translateY(-3px) rotate(-3deg); }
+    .ds-logo { font-size: 42px; font-weight: 750; letter-spacing: -0.5px; margin-bottom: 26px; color: #202124; }
+    .ds-logo span { color: var(--blue); }
+    .ds-landing .ds-box { width: min(640px, 92vw); height: 50px; }
+    .ds-tips { margin-top: 22px; display: flex; flex-wrap: wrap; gap: 8px; justify-content: center; max-width: 680px; }
+    .ds-tip { font-size: 13px; color: #3c4043; background: #f8f9fa; border: 1px solid #f1f3f4; border-radius: 8px; padding: 6px 12px; cursor: pointer; }
+    .ds-tip:hover { border-color: #dadce0; }
+    .ds-tip code { color: #1a4fb5; background: none; font-size: 12.5px; }
+    .ds-stat { margin-top: 26px; font-size: 13px; color: var(--muted); }
+
+    /* 结果页 */
+    .ds-top { position: sticky; top: 0; z-index: 20; background: #fff; border-bottom: 1px solid #ebebeb; padding: 14px 0 0 0; }
+    .ds-top-inner { display: flex; align-items: center; gap: 22px; padding: 0 24px 0 28px; }
+    .ds-top .ds-mini { font-size: 21px; font-weight: 750; color: #202124; cursor: pointer; white-space: nowrap; }
+    .ds-top .ds-mini span { color: var(--blue); }
+    .ds-top .ds-box { width: min(690px, 60vw); }
+    .ds-tabs { display: flex; gap: 2px; padding: 10px 0 0 calc(28px + 100px + 22px); }
+    .ds-tabs button { border: none; background: none; padding: 8px 12px 10px 12px; font-size: 13.5px; color: #5f6368; border-bottom: 3px solid transparent; }
+    .ds-tabs button:hover { color: #202124; }
+    .ds-tabs button.active { color: var(--blue); border-bottom-color: var(--blue); font-weight: 600; }
+    .ds-tabs .sep { flex: 1; }
+    .ds-tabs select { border: none; background: none; font-size: 13px; color: #5f6368; padding: 0 6px; margin-bottom: 6px; cursor: pointer; }
+    .ds-body { display: grid; grid-template-columns: minmax(0, 690px) 340px; gap: 60px; padding: 14px 24px 60px calc(28px + 100px + 22px); }
+    .ds-info { font-size: 13px; color: #70757a; margin-bottom: 14px; display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+    .ds-filter { font-size: 12px; background: #e8f0fe; color: #1a4fb5; border-radius: 12px; padding: 1px 9px; }
+    .ds-err { font-size: 12px; color: #b45309; }
+
+    .ds-res { margin-bottom: 26px; }
+    .ds-crumb { font-size: 12.5px; color: #4d5156; display: flex; gap: 6px; align-items: center; flex-wrap: wrap; margin-bottom: 2px; }
+    .ds-crumb .dot { color: #9aa0a6; }
+    .ds-crumb a { color: #4d5156; text-decoration: none; }
+    .ds-crumb a:hover { text-decoration: underline; }
+    .ds-title { display: inline-block; font-size: 19px; line-height: 1.35; color: var(--link); text-decoration: none; margin: 1px 0 3px 0; font-weight: 400; }
+    .ds-title:hover { text-decoration: underline; color: var(--link); }
+    .ds-title:visited { color: var(--link-visited); }
+    .ds-title b { font-weight: 600; }
+    .ds-snip { font-size: 14px; line-height: 1.58; color: #4d5156; }
+    .ds-snip b { color: var(--hl); font-weight: 600; }
+    .ds-where { font-size: 12px; color: #70757a; margin-right: 4px; white-space: nowrap; }
+    .ds-why { display: flex; flex-wrap: wrap; gap: 5px; margin-top: 6px; align-items: center; }
+    .ds-why span { font-size: 11px; color: #5f6368; background: var(--chip); border-radius: 10px; padding: 0 8px; line-height: 19px; }
+    .ds-why span.top { background: #e6f4ea; color: var(--green); }
+    .ds-more-btn { border: none; background: none; color: #1a4fb5; font-size: 12.5px; padding: 0; margin-left: 2px; }
+    .ds-web-add { border: 1px solid #c6dafc; background: #f3f8fe; color: #1a4fb5; font-size: 12px; border-radius: 10px; padding: 0 9px; line-height: 19px; }
+    .ds-web-add:hover { background: #e3edfa; }
+    .ds-web-add[disabled] { opacity: .6; }
+    .ds-tabs .ds-web-tab { margin-left: 10px; border-left: 1px solid #e8eaed; padding-left: 16px; }
+    .ds-more-btn:hover { text-decoration: underline; }
+    .ds-more { margin: 8px 0 0 14px; padding-left: 12px; border-left: 2px solid #e8eaed; display: none; }
+    .ds-more.open { display: block; }
+    .ds-more .ds-snip { margin-bottom: 8px; font-size: 13.5px; }
+
+    .ds-pager { display: flex; justify-content: center; align-items: center; gap: 4px; margin: 30px 0 10px 0; font-size: 14px; }
+    .ds-pager button { border: none; background: none; color: #1a4fb5; min-width: 32px; height: 32px; border-radius: 16px; }
+    .ds-pager button:hover:not([disabled]) { background: #f1f3f4; }
+    .ds-pager button.cur { color: #202124; font-weight: 700; cursor: default; }
+    .ds-pager button[disabled] { color: #c0c4c9; }
+
+    .ds-side > div { border: 1px solid #ebebeb; border-radius: 12px; padding: 14px 16px; margin-bottom: 14px; }
+    .ds-side h4 { font-size: 13px; font-weight: 700; color: #202124; margin: 0 0 10px 0; }
+    .ds-years { display: flex; align-items: flex-end; gap: 2px; height: 64px; }
+    .ds-years div { flex: 1; background: #c6dafc; border-radius: 2px 2px 0 0; cursor: pointer; min-height: 2px; }
+    .ds-years div:hover { background: var(--blue); }
+    .ds-years-axis { display: flex; justify-content: space-between; font-size: 11px; color: #70757a; margin-top: 4px; }
+    .ds-years-note { font-size: 11px; color: #9aa0a6; margin-top: 6px; }
+    .ds-list a { display: flex; justify-content: space-between; font-size: 13px; color: #1a4fb5; padding: 3px 0; text-decoration: none; cursor: pointer; }
+    .ds-list a:hover span:first-child { text-decoration: underline; }
+    .ds-list a span:last-child { color: #9aa0a6; font-variant-numeric: tabular-nums; }
+    .ds-chan { display: grid; grid-template-columns: 1fr auto; gap: 4px 10px; font-size: 13px; color: #3c4043; }
+    .ds-chan .bar { grid-column: 1 / -1; height: 4px; background: #eef2f7; border-radius: 2px; margin-bottom: 4px; }
+    .ds-chan .bar div { height: 100%; background: var(--blue); border-radius: 2px; }
+    .ds-related a { display: block; font-size: 13.5px; color: #202124; text-decoration: none; padding: 5px 0; cursor: pointer; }
+    .ds-related a:hover { color: #1a4fb5; }
+    .ds-related .kw { font-size: 12px; color: #70757a; }
+    .ds-empty { font-size: 14px; color: #3c4043; line-height: 1.8; }
+    .ds-loading { height: 3px; background: linear-gradient(90deg, transparent, var(--blue), transparent); background-size: 50% 100%;
+                  background-repeat: no-repeat; animation: dsload 1s linear infinite; visibility: hidden; }
+    .ds-loading.on { visibility: visible; }
+    @keyframes dsload { from { background-position: -50% 0; } to { background-position: 150% 0; } }
+    @media (max-width: 1100px) {
+        .ds-body { grid-template-columns: 1fr; padding-left: 24px; gap: 10px; }
+        .ds-tabs { padding-left: 24px; overflow-x: auto; }
+        .ds-top .ds-mini { display: none; }
+        .ds-top .ds-box { width: 100%; }
+    }
+</style>
+{% endblock %}
+
+{% block body %}
+<div class="ds" id="ds-root" data-query="{{ query }}">
+    {% if missing_settings %}
+    <div class="ds-setup">{{ _('还缺少必填配置：') }}{{ missing_settings|join(_('home:list_sep')) }} · <a href="{{ url_for('tracking.index', view='settings') }}">{{ _('home:settings.go') }}</a></div>
+    {% endif %}
+    <div id="ds-landing" class="ds-landing" hidden>
+        <img class="ds-mascot" src="{{ url_for('static', filename='logo.svg') }}" alt="" width="104" height="104">
+        <div class="ds-logo">{{ _('深度') }}<span>{{ _('搜索') }}</span></div>
+        <form class="ds-box" data-box autocomplete="off">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
+            <input type="text" name="q" placeholder="{{ _('搜索全文、AI 总结、笔记、标题与作者') }}" spellcheck="false" aria-label="{{ _('搜索') }}">
+            <button type="button" class="ds-clear" data-clear hidden>×</button>
+            <button type="submit" class="ds-go">{{ _('搜索') }}</button>
+            <div class="ds-suggest" data-suggest hidden></div>
+        </form>
+        <div class="ds-tips">
+            <span class="ds-tip" data-try='zinc isotope evaporation moon'>zinc isotope evaporation moon</span>
+            <span class="ds-tip" data-try='"late accretion" author:Day'><code>{{ _('"短语"') }}</code> <code>author:Day</code></span>
+            <span class="ds-tip" data-try='Theia year:2020-2026'><code>year:2020-2026</code></span>
+            <span class="ds-tip" data-try='magma ocean -Mars'><code>{{ _('-排除词') }}</code></span>
+            <span class="ds-tip" data-try='10.1016/j.epsl.2026.120451'>{{ _('直接粘贴 DOI') }}</span>
+        </div>
+        <div class="ds-stat" id="ds-stat"></div>
+    </div>
+
+    <div id="ds-results" hidden>
+        <div class="ds-top">
+            <div class="ds-top-inner">
+                <div class="ds-mini" data-home title="{{ _('回到搜索首页') }}">{{ _('深度') }}<span>{{ _('搜索') }}</span></div>
+                <form class="ds-box" data-box autocomplete="off">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
+                    <input type="text" name="q" spellcheck="false" aria-label="{{ _('搜索') }}">
+                    <button type="button" class="ds-clear" data-clear hidden>×</button>
+                    <button type="submit" class="ds-go">{{ _('搜索') }}</button>
+                    <div class="ds-suggest" data-suggest hidden></div>
+                </form>
+            </div>
+            <div class="ds-tabs" id="ds-tabs">
+                <button data-scope="all">{{ _('全部') }}</button>
+                <button data-scope="fulltext">{{ _('原文') }}</button>
+                <button data-scope="notes">{{ _('AI 总结与笔记') }}</button>
+                <button data-scope="title">{{ _('标题与作者') }}</button>
+                <button data-scope="web" class="ds-web-tab" title="{{ _('search:web.tab_hint') }}">🌐 {{ _('全网') }}</button>
+                <span class="sep"></span>
+                <select id="ds-sort" title="{{ _('排序') }}"><option value="relevance">{{ _('按相关度') }}</option><option value="newest">{{ _('按年份（新→旧）') }}</option></select>
+            </div>
+            <div class="ds-loading" id="ds-loading"></div>
+        </div>
+        <div class="ds-body">
+            <main id="ds-main"></main>
+            <aside class="ds-side" id="ds-side"></aside>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block tail %}
+{{ super() }}
+<script>
+    // 片段里的公式（$…$）用 MathJax 渲染；只处理结果片段，搜索框等不受影响
+    window.MathJax = { tex: { inlineMath: [['$', '$'], ['\\(', '\\)']], displayMath: [['$$', '$$'], ['\\[', '\\]']], processEscapes: true },
+                       options: { processHtmlClass: 'ds-snip', ignoreHtmlClass: 'ds' } };
+</script>
+<script defer src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-chtml.js"></script>
+<script>
+(function () {
+    const root = document.getElementById('ds-root');
+    const landing = document.getElementById('ds-landing');
+    const resultsView = document.getElementById('ds-results');
+    const main = document.getElementById('ds-main');
+    const side = document.getElementById('ds-side');
+    const loading = document.getElementById('ds-loading');
+    const esc = (v) => String(v == null ? '' : v).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+    const state = { q: '', scope: 'all', sort: 'relevance', page: 1 };
+    let lastData = null;
+    let requestSeq = 0;
+
+    function readUrl() {
+        const p = new URLSearchParams(location.search);
+        state.q = (p.get('q') || '').trim();
+        state.scope = p.get('scope') || 'all';
+        state.sort = p.get('sort') || 'relevance';
+        state.page = Math.max(1, parseInt(p.get('page') || '1', 10) || 1);
+    }
+    function writeUrl(push) {
+        const p = new URLSearchParams();
+        if (state.q) { p.set('q', state.q); }
+        if (state.scope !== 'all') { p.set('scope', state.scope); }
+        if (state.sort !== 'relevance') { p.set('sort', state.sort); }
+        if (state.page > 1) { p.set('page', state.page); }
+        const url = location.pathname + (p.toString() ? '?' + p.toString() : '');
+        (push ? history.pushState : history.replaceState).call(history, {}, '', url);
+    }
+
+    // ---------- 搜索框：两处共用（落地页、结果页顶部） ----------
+    const boxes = Array.from(root.querySelectorAll('[data-box]'));
+    boxes.forEach((box) => {
+        const input = box.querySelector('input');
+        const clear = box.querySelector('[data-clear]');
+        const panel = box.querySelector('[data-suggest]');
+        let items = [], active = -1, timer = null, seq = 0, typed = '';
+        const close = () => { panel.hidden = true; box.classList.remove('open'); active = -1; };
+        const syncClear = () => { clear.hidden = !input.value; };
+        function render() {
+            if (!items.length) { close(); return; }
+            panel.innerHTML = items.map((it, i) => '<div data-i="' + i + '"' + (i === active ? ' class="active"' : '') + '><span class="k">' +
+                (it.type === 'author' ? tr('作者') : tr('标题')) + '</span><span class="t">' + esc(it.text) + '</span>' +
+                (it.count ? '<span class="n">' + it.count + tr(' 篇</span>') : '') + '</div>').join('');
+            panel.hidden = false; box.classList.add('open');
+        }
+        input.addEventListener('input', () => {
+            syncClear();
+            clearTimeout(timer);
+            const text = input.value.trim();
+            const last = text.split(/\s+/).pop() || '';
+            if (text.length < 2 || /:/.test(last)) { items = []; close(); return; }
+            timer = setTimeout(async () => {
+                const my = ++seq;
+                try {
+                    const r = await fetch('/admin-api/search/suggest?q=' + encodeURIComponent(text), { credentials: 'same-origin' }).then((x) => x.json());
+                    if (my !== seq || document.activeElement !== input) { return; }
+                    items = r.items || []; active = -1; render();
+                } catch (e) { /* 联想失败不影响搜索 */ }
+            }, 140);
+        });
+        input.addEventListener('keydown', (e) => {
+            if (panel.hidden) { return; }
+            if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+                // 上下键在联想项之间移动，移出列表时恢复成自己输入的文字
+                e.preventDefault();
+                if (active === -1) { typed = input.value; }
+                if (e.key === 'ArrowDown') { active = active + 1 >= items.length ? -1 : active + 1; }
+                else { active = active - 1 < -1 ? items.length - 1 : active - 1; }
+                render();
+                input.value = active >= 0 ? items[active].query : typed;
+            } else if (e.key === 'Escape') { close(); }
+        });
+        input.addEventListener('focus', () => box.classList.add('focus'));
+        input.addEventListener('blur', () => { box.classList.remove('focus'); setTimeout(close, 150); });
+        panel.addEventListener('mousedown', (e) => {
+            const row = e.target.closest('[data-i]');
+            if (!row) { return; }
+            e.preventDefault();
+            input.value = items[Number(row.dataset.i)].query;
+            close(); go(input.value, { page: 1 });
+        });
+        clear.addEventListener('click', () => { input.value = ''; syncClear(); input.focus(); close(); });
+        box.addEventListener('submit', (e) => { e.preventDefault(); close(); go(input.value, { page: 1 }); });
+    });
+    function setBoxes(text) { boxes.forEach((b) => { b.querySelector('input').value = text; b.querySelector('[data-clear]').hidden = !text; }); }
+
+    // ---------- 搜索与渲染 ----------
+    function go(q, opts) {
+        state.q = (q || '').trim();
+        Object.assign(state, opts || {});
+        if (!state.q) { showLanding(true); return; }
+        writeUrl(true);
+        run();
+    }
+    function showLanding(push) {
+        state.q = ''; state.page = 1;
+        if (push) { writeUrl(true); }
+        landing.hidden = false; resultsView.hidden = true;
+        setBoxes('');
+        document.title = tr('深度搜索 · Pageboygent');
+        setTimeout(() => landing.querySelector('input').focus(), 0);
+        if (!document.getElementById('ds-stat').textContent) {
+            fetch('/admin-api/search/stats', { credentials: 'same-origin' }).then((r) => r.json()).then((s) => {
+                document.getElementById('ds-stat').textContent = tr('在你的文献库中搜索：') + s.papers + tr(' 篇文献') + (s.chunks ? ' · ' + s.chunks.toLocaleString() + tr(' 段原文') : '') + tr(' · AI 总结与笔记');
+            }).catch(() => {});
+        }
+    }
+    async function run() {
+        landing.hidden = true; resultsView.hidden = false;
+        setBoxes(state.q);
+        document.title = state.q + tr(' - 深度搜索');
+        root.querySelectorAll('#ds-tabs [data-scope]').forEach((b) => b.classList.toggle('active', b.dataset.scope === state.scope));
+        document.getElementById('ds-sort').value = state.sort;
+        loading.classList.add('on');
+        const my = ++requestSeq;
+        const params = new URLSearchParams({ q: state.q, scope: state.scope, sort: state.sort, page: state.page });
+        let data;
+        try {
+            const resp = await fetch('/admin-api/search?' + params.toString(), { credentials: 'same-origin' });
+            data = await resp.json();
+            if (!resp.ok || !data.ok) { throw new Error(data.error || tr('搜索失败')); }
+        } catch (e) {
+            if (my === requestSeq) { main.innerHTML = tr('<div class="ds-empty">搜索出错：') + esc(e.message) + '</div>'; side.innerHTML = ''; loading.classList.remove('on'); }
+            return;
+        }
+        if (my !== requestSeq) { return; }
+        lastData = data;
+        state.page = data.page;
+        loading.classList.remove('on');
+        renderMain(data); renderSide(data);
+        window.scrollTo({ top: 0 });
+        if (window.MathJax && window.MathJax.typesetPromise) { window.MathJax.typesetPromise([main]).catch(() => {}); }
+    }
+
+    function crumb(r) {
+        const parts = [];
+        if (r.authors) { parts.push(esc(r.authors)); }
+        if (r.year) { parts.push(esc(r.year)); }
+        if (r.doi_url) { parts.push('<a href="' + esc(r.doi_url) + tr('" target="_blank" rel="noopener" title="在出版商网站打开">doi.org/') + esc(r.doi) + '</a>'); }
+        return '<div class="ds-crumb">' + parts.join('<span class="dot">·</span>') + '</div>';
+    }
+    function passage(p) {
+        return '<div class="ds-snip"><span class="ds-where">' + esc(p.where) + ' —</span>' + p.html + '</div>';
+    }
+    let webResults = [];
+    function renderWeb(d) {
+        // 全网结果：标题指向出版商页面（库中已有的指向 Zotero），可一键加入 Zotero
+        const st = (d.web && d.web.status) || [];
+        const sources = st.filter((x) => x.state === 'ok').map((x) => esc(x.label) + ' ' + x.count).join(' · ');
+        const notes = st.filter((x) => x.state !== 'ok').map((x) => '<span class="ds-err" title="' + esc(x.state) + '">' +
+            esc(tr(x.state === 'not-configured' ? 'search:web.status.not_configured' : 'search:web.status.error', { source: x.label })) + '</span>').join('');
+        let h = '<div class="ds-info">' + esc(tr('search:web.info', { n: d.total, sources })) + ' · ' + (d.took_ms / 1000).toFixed(2) + ' s' +
+            d.filters.map((f) => '<span class="ds-filter">' + esc(f) + '</span>').join('') + notes + '</div>';
+        webResults = d.results;
+        if (!d.results.length) { main.innerHTML = h + '<div class="ds-empty">' + esc(tr('没有找到相关文献。')) + '</div>'; return; }
+        d.results.forEach((r, i) => {
+            const href = r.in_library ? r.zotero_url : (r.url || r.doi_url || '#');
+            const action = r.in_library
+                ? '<span class="top">✓ ' + esc(tr('search:web.in_library')) + '</span><a class="ds-more-btn" href="' + esc(r.zotero_url) + '">' + esc(tr('search:web.open_zotero')) + '</a>'
+                : '<button class="ds-web-add" data-web-add="' + i + '">＋ ' + esc(tr('search:web.add')) + '</button>';
+            h += '<div class="ds-res">' + crumb(r) +
+                '<a class="ds-title" href="' + esc(href) + '"' + (r.in_library ? '' : ' target="_blank" rel="noopener"') + '>' + r.title_html + '</a>' +
+                (r.snippet && r.snippet.html ? passage(r.snippet) : (r.snippet ? '<div class="ds-snip"><span class="ds-where">' + esc(r.snippet.where) + '</span></div>' : '')) +
+                '<div class="ds-why">' + action + r.channels.map((c) => '<span>' + esc(c.label) + ' #' + c.rank + '</span>').join('') +
+                (r.cited_by ? '<span>' + esc(tr('search:web.cited_by', { n: r.cited_by })) + '</span>' : '') + '</div></div>';
+        });
+        main.innerHTML = h + pager(d);
+    }
+    function renderMain(d) {
+        if (d.scope === 'web') { renderWeb(d); return; }
+        const info = tr('<div class="ds-info">找到约 ') + d.total + tr(' 篇文献（') + (d.took_ms / 1000).toFixed(2) + tr(' 秒）') +
+            d.filters.map((f) => '<span class="ds-filter">' + esc(f) + '</span>').join('') +
+            (d.errors && Object.keys(d.errors).length ? '<span class="ds-err" title="' + esc(JSON.stringify(d.errors)) + tr('">部分渠道暂不可用</span>') : '') + '</div>';
+        if (!d.results.length) {
+            main.innerHTML = info + tr('<div class="ds-empty">没有找到与 <b>') + esc(d.query) + tr('</b> 相关的文献。<br>建议：<br>· 换用更常见的说法或英文术语<br>· 去掉年份、作者等限定条件<br>· 切换到“全部”范围</div>');
+            return;
+        }
+        let h = info;
+        d.results.forEach((r, i) => {
+            const more = r.more.length ? '<button class="ds-more-btn" data-more="' + i + tr('">更多片段（') + r.more.length + '）</button>' : '';
+            h += '<div class="ds-res">' + crumb(r) +
+                '<a class="ds-title" href="' + esc(r.zotero_url) + tr('" title="在 Zotero 中打开">') + r.title_html + '</a>' +
+                (r.snippet ? passage(r.snippet) : '') +
+                '<div class="ds-why">' + r.channels.map((c) => '<span class="' + (c.rank <= 3 ? 'top' : '') + tr('" title="这篇在“') + esc(c.label) + tr('”渠道里排第 ') + c.rank + '">' + esc(c.label) + ' #' + c.rank + '</span>').join('') + more + '</div>' +
+                (r.more.length ? '<div class="ds-more" id="ds-more-' + i + '">' + r.more.map(passage).join('') + '</div>' : '') + '</div>';
+        });
+        h += pager(d);
+        main.innerHTML = h;
+    }
+    function pager(d) {
+        if (d.pages <= 1) { return ''; }
+        const pages = [];
+        const lo = Math.max(1, d.page - 4), hi = Math.min(d.pages, lo + 9);
+        for (let p = lo; p <= hi; p++) { pages.push(p); }
+        return '<div class="ds-pager"><button data-page="' + (d.page - 1) + '"' + (d.page <= 1 ? ' disabled' : '') + tr('>‹ 上一页</button>') +
+            pages.map((p) => '<button data-page="' + p + '"' + (p === d.page ? ' class="cur"' : '') + '>' + p + '</button>').join('') +
+            '<button data-page="' + (d.page + 1) + '"' + (d.page >= d.pages ? ' disabled' : '') + tr('>下一页 ›</button></div>');
+    }
+    function renderSide(d) {
+        let h = '';
+        const years = d.facets.years || [];
+        if (years.length >= 2) {
+            const minY = years[0].year, maxY = years[years.length - 1].year;
+            const span = Math.min(maxY - minY + 1, 60), from = maxY - span + 1;
+            const counts = {}; years.forEach((y) => { counts[y.year] = y.count; });
+            const older = years.filter((y) => y.year < from).reduce((s, y) => s + y.count, 0);
+            const peak = Math.max(...years.filter((y) => y.year >= from).map((y) => y.count), 1);
+            let bars = '';
+            for (let y = from; y <= maxY; y++) {
+                const c = counts[y] || 0;
+                bars += '<div style="height:' + Math.max(2, Math.round(c / peak * 64)) + 'px;' + (c ? '' : 'background:#eef2f7;') + '" data-year="' + y + '" title="' + y + tr(' 年：') + c + tr(' 篇（点击只看这一年）"></div>');
+            }
+            h += tr('<div><h4>发表年份</h4><div class="ds-years">') + bars + '</div><div class="ds-years-axis"><span>' + from + '</span><span>' + maxY + '</span></div>' +
+                tr('<div class="ds-years-note">点击柱子按年份筛选') + (older ? tr(' · 更早 ') + older + tr(' 篇') : '') + '</div></div>';
+        }
+        const chans = d.facets.channels || [];
+        if (chans.length > 1) {
+            const peak = Math.max(...chans.map((c) => c.count), 1);
+            h += tr('<div><h4>各渠道命中</h4><div class="ds-chan">') + chans.map((c) => '<span>' + esc(c.label) + '</span><span>' + c.count + '</span><div class="bar"><div style="width:' + Math.round(c.count / peak * 100) + '%"></div></div>').join('') +
+                tr('</div><div class="ds-years-note">排序综合各渠道的名次（倒数排名融合），不单看某一个分数</div></div>');
+        }
+        if ((d.facets.authors || []).length) {
+            h += tr('<div><h4>常见作者</h4><div class="ds-list">') + d.facets.authors.map((a) => '<a data-author="' + esc(a.name) + tr('" title="只看这位作者的文献"><span>') + esc(a.name) + '</span><span>' + a.count + '</span></a>').join('') + '</div></div>';
+        }
+        if ((d.related || []).length) {
+            h += tr('<div class="ds-related"><h4>相关主题</h4>') + d.related.map((g) => '<a data-related="' + esc((g.keywords || []).slice(0, 4).join(' ') || g.name) + '">' + esc(g.name) +
+                (g.keywords && g.keywords.length ? '<div class="kw">' + esc(g.keywords.slice(0, 5).join(' · ')) + '</div>' : '') + '</a>').join('') + '</div>';
+        }
+        side.innerHTML = h;
+    }
+    function addFilter(token, pattern) {
+        const q = state.q.replace(pattern, '').replace(/\s+/g, ' ').trim();
+        go((q + ' ' + token).trim(), { page: 1 });
+    }
+
+    // ---------- 交互 ----------
+    root.addEventListener('click', (e) => {
+        const t = e.target;
+        const add = t.closest('[data-web-add]');
+        if (add) {
+            const r = webResults[Number(add.dataset.webAdd)];
+            add.disabled = true; add.textContent = tr('search:web.adding');
+            fetch('/admin-api/search/web/ingest', { method: 'POST', credentials: 'same-origin', headers: { 'Content-Type': 'application/json' },
+                                                   body: JSON.stringify({ record: r.record }) })
+                .then((x) => x.json()).then((res) => {
+                    if (!res.ok) { throw new Error(res.error || 'error'); }
+                    add.outerHTML = '<span class="top">✓ ' + esc(tr(res.already ? 'search:web.in_library' : 'search:web.added')) + '</span>';
+                }).catch((err) => { add.disabled = false; add.textContent = '＋ ' + tr('search:web.add'); alert(err.message); });
+            return;
+        }
+        const more = t.closest('[data-more]');
+        if (more) {
+            const box = document.getElementById('ds-more-' + more.dataset.more);
+            box.classList.toggle('open');
+            more.textContent = box.classList.contains('open') ? tr('收起片段') : tr('更多片段（') + box.children.length + '）';
+            if (box.classList.contains('open') && window.MathJax && window.MathJax.typesetPromise) { window.MathJax.typesetPromise([box]).catch(() => {}); }
+            return;
+        }
+        const page = t.closest('[data-page]');
+        if (page && !page.disabled && !page.classList.contains('cur')) { state.page = Number(page.dataset.page); writeUrl(true); run(); return; }
+        const scope = t.closest('[data-scope]');
+        if (scope) { state.scope = scope.dataset.scope; state.page = 1; writeUrl(true); run(); return; }
+        const year = t.closest('[data-year]');
+        if (year) { addFilter('year:' + year.dataset.year, /\byear:\S+/g); return; }
+        const author = t.closest('[data-author]');
+        if (author) { addFilter('author:"' + author.dataset.author + '"', /\bauthor:("[^"]*"|\S+)/g); return; }
+        const related = t.closest('[data-related]');
+        if (related) { go(related.dataset.related, { page: 1, scope: 'all' }); return; }
+        const tip = t.closest('[data-try]');
+        if (tip) { go(tip.dataset.try, { page: 1 }); return; }
+        if (t.closest('[data-home]')) { showLanding(true); }
+    });
+    document.getElementById('ds-sort').addEventListener('change', (e) => { state.sort = e.target.value; state.page = 1; writeUrl(true); run(); });
+    document.addEventListener('keydown', (e) => {
+        if (e.key === '/' && !/^(INPUT|TEXTAREA|SELECT)$/.test(document.activeElement.tagName)) {
+            e.preventDefault();
+            const input = (resultsView.hidden ? landing : resultsView).querySelector('input');
+            input.focus(); input.select();
+        }
+    });
+    window.addEventListener('popstate', () => { readUrl(); if (state.q) { run(); } else { showLanding(false); } });
+
+    readUrl();
+    if (!state.q && root.dataset.query) { state.q = root.dataset.query; }
+    if (state.q) { writeUrl(false); run(); } else { showLanding(false); }
+})();
+</script>
+{% endblock %}

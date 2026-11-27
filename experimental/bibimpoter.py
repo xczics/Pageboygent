@@ -141,7 +141,7 @@ def clean_and_export_to_bib_file():
     export_bib_file([entry for entry in parse_bib_file(input_file)], output_file)
 
 def clean_and_export_to_zotero():
-    from .zt_tools import insert_reference_to_collection
+    from Pageboygent.zt_tools import insert_reference_to_collection
     import sys
     # usage: python bibimporter.py path/to/your/bibfile.bib collection
     if len(sys.argv) != 3:

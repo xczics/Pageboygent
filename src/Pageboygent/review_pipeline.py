@@ -29,7 +29,8 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any, Callable
 
-from .config import get_config
+from .i18n import t
+from .config import get_config, research_field
 
 _workstation = Path(get_config("workstation_dir")).expanduser()
 
@@ -38,7 +39,7 @@ _workstation = Path(get_config("workstation_dir")).expanduser()
 # ---------------------------------------------------------------------------
 
 PLAN_PROMPT = """
-你现在是地球化学、地球物理、宇宙化学与行星科学领域的专家。
+你现在是〔研究领域〕领域的专家。
 你正在完成一篇关于"{topic}"的综述。下面给出了候选文献的 AI 略读笔记，每篇以 [P#] 标注编号。
 你需要根据这些略读笔记进行任务拆分，以便 AI Agent 工具执行：
 
@@ -78,7 +79,7 @@ PLAN_PROMPT = """
 
 候选文献的略读笔记：
 {summaries}
-""".strip()
+""".strip().replace("〔研究领域〕", research_field())
 
 NOTE_SYSTEM_SUFFIX = """
 
@@ -110,7 +111,7 @@ Bibliography (the ONLY works you may cite; use exactly these bibliographic detai
 Generate the review directly."""
 
 FINAL_SYSTEM = """
-你是地球化学、地球物理、宇宙化学与行星科学领域的专家，正在完成一篇关于"{topic}"的综述。
+你是〔研究领域〕领域的专家，正在完成一篇关于"{topic}"的综述。
 此前你把工作拆分成了若干子课题，由子任务逐篇精读文献并写出子话题综述。现在请整合这些子话题综述，写出一篇可发表级别的完整综述：
 - 有清晰的整体结构（引言、按逻辑组织的主体章节、讨论/悬而未决的问题与展望、结论），而不是子综述的简单拼接；
 - 梳理不同研究之间的联系、共识与分歧，指出证据强弱；
@@ -118,7 +119,7 @@ FINAL_SYSTEM = """
 - 只能引用下面给出的参考文献列表中的文献，书目信息以列表为准，不得编造；子综述中转引的库外文献，如需提及须说明是转引；
 - 语言与子话题综述保持一致（若子综述为英文则用英文写作）。
 直接输出综述正文（Markdown）。
-""".strip()
+""".strip().replace("〔研究领域〕", research_field())
 
 FINAL_USER = """# 子课题规划
 {plan}
@@ -160,7 +161,7 @@ def parse_plan(text: str, papers: dict[int, dict]) -> tuple[list[dict], list[str
     warnings: list[str] = []
     match = re.search(r"<subprojects>.*</subprojects>", text or "", re.S)
     if not match:
-        raise ValueError("规划输出中找不到 <subprojects> … </subprojects>")
+        raise ValueError(t("规划输出中找不到 <subprojects> … </subprojects>"))
     root = ET.fromstring(_escape_amp(match.group(0)))
     by_author_year: dict[tuple[str, str], list[int]] = {}
     for pid, meta in papers.items():
@@ -183,15 +184,15 @@ def parse_plan(text: str, papers: dict[int, dict]) -> tuple[list[dict], list[str
                 year = (bib.findtext("year") or "").strip()
                 candidates = by_author_year.get((author, year), [])
                 if len(candidates) == 1:
-                    warnings.append(f"子课题 {label}：编号 {raw or '（空）'} 无效，已按 {author} {year} 纠正为 P{candidates[0]}")
+                    warnings.append(t("review:warn.id_fixed", label=label, raw=raw or t("（空）"), author=author, year=year, pid=candidates[0]))
                     pid = candidates[0]
                 else:
-                    warnings.append(f"子课题 {label}：文献 {raw or '（空）'}（{author} {year}）不在候选集中，已剔除")
+                    warnings.append(t("review:warn.not_candidate", label=label, raw=raw or t("（空）"), author=author, year=year))
                     continue
             if pid not in pids:
                 pids.append(pid)
         if not pids:
-            warnings.append(f"子课题 {label} 没有有效文献，已跳过")
+            warnings.append(t("review:warn.no_papers", label=label))
             continue
         slug = slugify(label, f"topic-{index}")
         while slug in used_slugs:
@@ -200,7 +201,7 @@ def parse_plan(text: str, papers: dict[int, dict]) -> tuple[list[dict], list[str
         subtopics.append({**item, "label": label, "index": len(subtopics) + 1, "slug": slug,
                           "dir": f"{len(subtopics) + 1:02d}-{slug}", "pids": pids})
     if not subtopics:
-        raise ValueError("规划中没有任何有效的子课题")
+        raise ValueError(t("规划中没有任何有效的子课题"))
     return subtopics, warnings
 
 
@@ -375,7 +376,7 @@ class ReviewRunner:
         content = (choice.message.content or "").strip()
         reasoning = getattr(choice.message, "reasoning_content", None) or ""
         if getattr(choice, "finish_reason", None) == "length":
-            self.log("warn", f"{stage}：输出达到长度上限（max_tokens={max_tokens or self.max_tokens}），内容可能被截断")
+            self.log("warn", t("review:warn.truncated", stage=stage, max_tokens=max_tokens or self.max_tokens))
         return content, reasoning
 
     @staticmethod
@@ -399,19 +400,19 @@ class ReviewRunner:
                 self.update(lambda p, s=stage: p.update(stage=s))
                 getattr(self, f"stage_{stage}")()
             self.update(lambda p: p.update(status="done", stage="done", finished_at=_now(), current_stage_key=None))
-            self.log("system", "综述流水线全部完成。")
+            self.log("system", t("综述流水线全部完成。"))
         except PipelineCancelled:
             self.update(lambda p: p.update(status="cancelled"))
-            self.log("system", "已停止。可随时点击“继续”从中断处接着跑，已完成的部分会直接复用。")
+            self.log("system", t("已停止。可随时点击“继续”从中断处接着跑，已完成的部分会直接复用。"))
         except Exception as exc:
             self.update(lambda p: p.update(status="error", error=f"{type(exc).__name__}: {exc}"))
-            self.log("warn", f"出错：{type(exc).__name__}: {exc}")
+            self.log("warn", t("review:error.run", error=f"{type(exc).__name__}: {exc}"))
 
     def stage_collect(self) -> None:
         project = self.project()
         if project.get("papers"):
             return
-        self.log("system", f"从 Zotero 读取 Collection：{', '.join(project['collections'])}")
+        self.log("system", t("review:log.read_collections", names=', '.join(project['collections'])))
         keys: list[str] = []
         for name in project["collections"]:
             keys.extend(self.backend.collection_keys(name))
@@ -422,16 +423,16 @@ class ReviewRunner:
         for key in keys:
             meta = found.get(key)
             if meta is None:
-                excluded.append({"key": key, "reason": "未被 Pageboygent 追踪（不在数据库中）"})
+                excluded.append({"key": key, "reason": t("未被 Pageboygent 追踪（不在数据库中）")})
             elif not meta["md_path"]:
-                excluded.append({"key": key, "pid": meta["pid"], "title": meta["title"], "reason": "没有本地全文 Markdown"})
+                excluded.append({"key": key, "pid": meta["pid"], "title": meta["title"], "reason": t("没有本地全文 Markdown")})
             else:
                 meta["ref"] = self.backend.bibliography(key)
                 papers[str(meta["pid"])] = meta
         if not papers:
-            raise ValueError("所选 Collection 中没有可用的文献（需要已被追踪且有全文 Markdown）")
+            raise ValueError(t("所选 Collection 中没有可用的文献（需要已被追踪且有全文 Markdown）"))
         self.update(lambda p: p.update(papers=papers, excluded=excluded))
-        self.log("system", f"共 {len(keys)} 个条目，{len(papers)} 篇可用于综述，{len(excluded)} 篇被排除。")
+        self.log("system", t("review:log.collected", items=len(keys), usable=len(papers), excluded=len(excluded)))
 
     def stage_plan(self) -> None:
         project = self.project()
@@ -444,7 +445,7 @@ class ReviewRunner:
             min_topics=max(2, min(4, n // 10 or 2)), max_topics=max(3, min(10, n // 6 or 3)),
             summaries="\n\n".join(self._summary_block(m) for m in sorted(papers.values(), key=lambda m: m["pid"])),
         )
-        self.log("system", f"规划中：把 {n} 篇文献的略读笔记交给模型拆分子课题……")
+        self.log("system", t("review:log.planning", n=n))
         content, reasoning = self.llm("plan", [{"role": "user", "content": prompt}], max_tokens=self.max_tokens)
         self.write("plan/plan.xml", content)
         if reasoning:
@@ -453,7 +454,7 @@ class ReviewRunner:
         for warning in warnings:
             self.log("warn", warning)
         self.update(lambda p: p.update(plan={"subtopics": subtopics, "warnings": warnings, "created_at": _now()}))
-        self.log("system", f"规划完成：{len(subtopics)} 个子课题，共 {sum(len(t['pids']) for t in subtopics)} 次精读。")
+        self.log("system", t("review:log.planned", topics=len(subtopics), reads=sum(len(topic['pids']) for topic in subtopics)))
 
     def _note_path(self, topic: dict, pid: int) -> str:
         return f"subtopics/{topic['dir']}/notes/P{pid}.md"
@@ -472,7 +473,7 @@ class ReviewRunner:
             content, reasoning = self.llm(stage, [{"role": "system", "content": system},
                                                   {"role": "user", "content": user}])
             if not content:
-                raise ValueError("模型没有返回笔记内容")
+                raise ValueError(t("模型没有返回笔记内容"))
             header = f"<!-- P{pid} · {cite} · {meta['title']} · 子课题 {topic['label']} -->\n\n"
             self.write(self._note_path(topic, pid), header + content)
             if reasoning:
@@ -481,13 +482,13 @@ class ReviewRunner:
                     f"{get_config('tag_for_detailed_reading')}/{project['slug']}/{topic['label']}"]
             self.backend.save_note_to_zotero(meta["key"], content, tags)
             self.store.set_status(self.project_id, "notes", topic["dir"], str(pid), "done")
-            self.log("tool", f"精读完成：{topic['label']} · P{pid} {cite}")
+            self.log("tool", t("review:log.note_done", label=topic['label'], pid=pid, cite=cite))
         except PipelineCancelled:
             self.store.set_status(self.project_id, "notes", topic["dir"], str(pid), "pending")
             raise
         except Exception as exc:
             self.store.set_status(self.project_id, "notes", topic["dir"], str(pid), "error")
-            self.log("warn", f"精读失败：{topic['label']} · P{pid} {cite}：{exc}")
+            self.log("warn", t("review:log.note_failed", label=topic['label'], pid=pid, cite=cite, error=exc))
 
     def stage_notes(self) -> None:
         project = self.project()
@@ -504,7 +505,7 @@ class ReviewRunner:
                 jobs.append((topic, pid, system))
         if not jobs:
             return
-        self.log("system", f"逐篇精读：{len(jobs)} 篇待读，并发 {self.concurrency}。")
+        self.log("system", t("review:log.notes_start", n=len(jobs), concurrency=self.concurrency))
         # 按子课题顺序提交：同一子课题的请求共享"系统提示 + 略读总结"前缀，能命中缓存
         with concurrent.futures.ThreadPoolExecutor(max_workers=self.concurrency) as pool:
             futures = [pool.submit(self._read_one, *job) for job in jobs]
@@ -516,7 +517,7 @@ class ReviewRunner:
                     raise exc
         failed = sum(1 for status in self._statuses("notes").values() for s in status.values() if s == "error")
         if failed:
-            self.log("warn", f"{failed} 篇精读失败；对应子课题会基于其余笔记继续写综述，之后可点“继续”重试失败项。")
+            self.log("warn", t("review:log.notes_failed", n=failed))
 
     def _statuses(self, kind: str) -> dict:
         return self.project().get("progress", {}).get(kind, {})
@@ -538,11 +539,11 @@ class ReviewRunner:
                     notes.append(f"## [P{pid}] {meta.get('first_author') or 'Unknown'} ({meta.get('year') or 'n.d.'}) "
                                  f"{meta['title']}\n\n{note}")
             if not notes:
-                self.log("warn", f"子课题 {topic['label']} 没有任何精读笔记，跳过综述")
+                self.log("warn", t("review:log.no_notes", label=topic['label']))
                 self.store.set_status(self.project_id, "reviews", topic["dir"], None, "error")
                 continue
             self.store.set_status(self.project_id, "reviews", topic["dir"], None, "running")
-            self.log("system", f"撰写子课题综述：{topic['label']}（{len(notes)} 篇笔记）")
+            self.log("system", t("review:log.writing_sub", label=topic['label'], n=len(notes)))
             system = (topic.get("reviewprompt") or "") + REVIEW_SYSTEM_SUFFIX.format(
                 reviewformat=topic.get("reviewformat") or "Markdown")
             user = REVIEW_USER.format(notes="\n\n---\n\n".join(notes),
@@ -554,7 +555,7 @@ class ReviewRunner:
             if reasoning:
                 self.write(f"subtopics/{topic['dir']}/reasoning/review.md", reasoning)
             for mention in uncited_mentions(content, {int(k): v for k, v in papers.items()}):
-                self.log("warn", f"子课题 {topic['label']} 的综述提到了不在本项目文献中的 \"{mention}\"（可能是转引，请核实）")
+                self.log("warn", t("review:log.sub_mention", label=topic['label'], mention=mention))
             self.store.set_status(self.project_id, "reviews", topic["dir"], None, "done")
 
     def stage_final(self) -> None:
@@ -569,8 +570,8 @@ class ReviewRunner:
             if review:
                 reviews.append(f"## 子课题 {topic['index']}：{topic['label']}\n\n{review}")
         if not reviews:
-            raise ValueError("没有任何子课题综述，无法撰写最终综述")
-        self.log("system", f"撰写最终综述：整合 {len(reviews)} 篇子课题综述……")
+            raise ValueError(t("没有任何子课题综述，无法撰写最终综述"))
+        self.log("system", t("review:log.writing_final", n=len(reviews)))
         used = sorted({pid for t in topics for pid in t["pids"]})
         plan_text = "\n".join(f"- {t['label']}：{t.get('subprojectsummary', '')}" for t in topics)
         content, reasoning = self.llm("final", [
@@ -583,7 +584,7 @@ class ReviewRunner:
         if reasoning:
             self.write("final/reasoning.md", reasoning)
         for mention in uncited_mentions(content, {int(k): v for k, v in papers.items()}):
-            self.log("warn", f"最终综述提到了不在本项目文献中的 \"{mention}\"（可能是转引，请核实）")
+            self.log("warn", t("review:log.final_mention", mention=mention))
         self.update(lambda p: p.update(current_stage_key=None))
 
 
@@ -692,10 +693,10 @@ class ReviewProjectStore:
     def start(self, project_id: str, *, retry_failed: bool = True) -> None:
         with self._lock:
             if self.status(project_id) == "running":
-                raise RuntimeError("该项目正在运行中")
+                raise RuntimeError(t("该项目正在运行中"))
             if self.load(project_id).get("imported"):
                 # 历史导入的项目缺少原始上下文（提示词组装方式、模型、用量），重跑缺失部分只会产生不一致的结果和费用
-                raise RuntimeError("这是从旧流程导入的历史记录，只供查看，不能继续运行。")
+                raise RuntimeError(t("这是从旧流程导入的历史记录，只供查看，不能继续运行。"))
             self._cancel.discard(project_id)
 
             def _prepare(p: dict) -> None:

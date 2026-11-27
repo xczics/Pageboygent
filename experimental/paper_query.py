@@ -130,7 +130,7 @@ After a search and reading the relevant informations, please generate a final an
 """
 
 
-from .config import get_config
+from Pageboygent.config import get_config
 from openai import OpenAI
 from openai.types.chat import (
     ChatCompletionMessageParam,
@@ -339,8 +339,8 @@ class PaperQueryChatter:
         queries, keywords, _ = self.current_database_query
         query_results = {}
         query_keys = []
-        from .rag import rag_database_searching
-        from .storage import search_quick_summary_by_key_words
+        from Pageboygent.rag import rag_database_searching
+        from Pageboygent.storage import search_quick_summary_by_key_words
         rag_results_dict, rag_results_keys = rag_database_searching(queries, keywords)
         quick_summary_results = {}
         for keyword in keywords:
@@ -354,7 +354,7 @@ class PaperQueryChatter:
                     "<rag_snippet>" + snippet + "</rag_snippet>" for snippet in rag_results_dict[rag_key]
                     ]
             else:
-                from .storage import Paper
+                from Pageboygent.storage import Paper
                 paper = Paper.get_by_id(rag_key)
                 if paper is not None:
                     query_results[rag_key] = [
@@ -571,7 +571,7 @@ class PaperQueryChatter:
         
         # 如果需要查询全文
         if informations.require_full:
-            from .storage import Paper
+            from Pageboygent.storage import Paper
             paper = Paper.get_by_id(paper_id)
             if paper is None:
                 raise ValueError(f"Paper ID {paper_id} not found in the database.")
@@ -633,7 +633,7 @@ class PaperQueryChatter:
         information_total_xml = "<queried_informations>" + "".join(self.informations) + "</queried_informations>"
         bib_infos = []
         for paper_id in self.analyzed_papers_keys:
-            from .storage import Paper
+            from Pageboygent.storage import Paper
             paper = Paper.get_by_id(paper_id)
             bib_info = paper.bib_info() if paper is not None else f"Paper ID {paper_id} not found."
             bib_infos.append(f"<paper_id>{paper_id}</paper_id><bib_info>{bib_info}</bib_info>")

@@ -12,7 +12,7 @@ from unittest.mock import patch, MagicMock
 
 import pytest
 
-from Pageboygent.bookboy_heartbeat import (
+from experimental.bookboy_heartbeat import (
     BookBoyConfig,
     BookBoyRuntime,
     load_config,
@@ -20,7 +20,7 @@ from Pageboygent.bookboy_heartbeat import (
     reflect_to_graph,
     query_knowledge,
 )
-from Pageboygent.knowledge_graph import KnowledgeGraph
+from experimental.knowledge_graph import KnowledgeGraph
 
 
 # ===== Fixtures =====
@@ -189,7 +189,7 @@ class TestKnowledgeGraphIntegration:
 # ===== Integration: full heartbeat cycle =====
 
 
-@patch("Pageboygent.bookboy_heartbeat._call_llm")
+@patch("experimental.bookboy_heartbeat._call_llm")
 class TestHeartbeatCycle:
     def test_heartbeat_no_mail_does_nothing(self, mock_llm, test_dir):
         """No mail in inbox → no LLM call, no knowledge extraction."""
@@ -211,7 +211,7 @@ class TestHeartbeatCycle:
         """KG gets initialized during heartbeat if not set."""
         mock_llm.return_value = "Mocked AI response"
 
-        from Pageboygent.mail import send
+        from experimental.mail import send
 
         cfg = BookBoyConfig(
             name="test_boy",
@@ -235,7 +235,7 @@ class TestHeartbeatCycle:
         """Mail in inbox → call LLM → auto-reply → extract knowledge."""
         mock_llm.return_value = "## Key Findings\n- Chemistry is the study of matter"
 
-        from Pageboygent.mail import send
+        from experimental.mail import send
 
         cfg = BookBoyConfig(
             name="test_boy",
@@ -260,7 +260,7 @@ class TestHeartbeatCycle:
         """LLM failure → error counted, no knowledge extraction."""
         mock_llm.side_effect = RuntimeError("API timeout")
 
-        from Pageboygent.mail import send
+        from experimental.mail import send
 
         cfg = BookBoyConfig(
             name="test_boy",

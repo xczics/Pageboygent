@@ -97,7 +97,7 @@ def _rag_rule_filter(text: str) -> bool | None:
 worthy = Worthy(
     llm_config=LLMConfig(
         base_url=ds_url,
-        api_key=ds_api_key,
+        api_key=ds_api_key or "not-configured",   # 未配置时先占位，服务照常启动
         model=flash_model_name,
         temperature=0.05,
         max_tokens=100,
@@ -390,7 +390,13 @@ def bm25_retrieve(
         restrict = Or([NumericRange("paper_id", int(pid), int(pid)) for pid in paper_ids])
     output = []
     with ix.searcher() as searcher:
-        for hit in searcher.search(parsed, limit=top_k, filter=restrict):
+        try:
+            hits = searcher.search(parsed, limit=top_k, filter=restrict)
+        except ZeroDivisionError:
+            # Whoosh 的已知问题：OR 加覆盖度加权（OrGroup.factory）遇到“单个短语 + NOT”会除以零，换成普通 OR 重查
+            parsed = QueryParser("content", ix.schema, group=OrGroup).parse(query)
+            hits = searcher.search(parsed, limit=top_k, filter=restrict)
+        for hit in hits:
             output.append({
                 "id": hit["chunk_id"],
                 "paper_id": hit["paper_id"],

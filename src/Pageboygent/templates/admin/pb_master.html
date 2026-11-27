@@ -1,18 +1,41 @@
 {% extends 'admin/base.html' %}
 {#
   Pageboygent 的页面骨架：
-  - 顶部导航只有四项：AI 对话 / AI 文献检索 / RAG 搜索 / 数据库（由 pb_top_nav 提供）
+  - 顶部导航：文献追踪 / AI 对话 / AI 文献检索 / AI 综述 / 数据库；主页（深度搜索）由左上角 “Pageboygent” 进入（由 pb_top_nav 提供）
   - "数据库"下的看板与各数据表页面共用一条二级菜单（由 pb_db_nav 提供），数据表页面不出现在顶部导航
 #}
 
-{% block title %}{{ admin_view.name }} · Pageboygent{% endblock %}
+{% block title %}{{ _(admin_view.name) }} · Pageboygent{% endblock %}
 
 {% block head %}
 {{ super() }}
+<link rel="icon" type="image/svg+xml" href="{{ url_for('static', filename='logo.svg') }}">
+<link rel="icon" type="image/png" sizes="32x32" href="{{ url_for('static', filename='favicon-32.png') }}">
+<link rel="apple-touch-icon" href="{{ url_for('static', filename='apple-touch-icon.png') }}">
+<script>
+    // 界面多语言：tr('中文原文', {占位: 值})。中文界面时译文表为空、原样返回；查不到译文也退回中文
+    window.PB_LANG = {{ pb_lang()|tojson }};
+    window.PB_I18N = {{ pb_i18n()|tojson }};
+    window.tr = function (text, params) {
+        let out = (window.PB_I18N && Object.prototype.hasOwnProperty.call(window.PB_I18N, text)) ? window.PB_I18N[text] : text;
+        if (params) { out = out.replace(/\{(\w+)\}/g, (m, k) => (params[k] !== undefined ? params[k] : m)); }
+        return out;
+    };
+</script>
 <style>
+    .pb-lang { display: flex; align-items: center; gap: 2px; margin-left: 8px; }
+    .pb-lang a { color: rgba(255,255,255,.55); font-size: 12px; font-weight: 600; padding: 3px 7px; border-radius: 6px; text-decoration: none; }
+    .pb-lang a:hover { color: #fff; }
+    .pb-lang a.active { color: #fff; background: rgba(255,255,255,.14); }
     .navbar .pb-brand {
         font-weight: 700;
         letter-spacing: 0.3px;
+    }
+
+    .navbar .pb-brand .pb-brand-logo {
+        border-radius: 7px;
+        margin-right: 8px;
+        vertical-align: -6px;
     }
 
     .navbar .pb-brand .pb-brand-mark {
@@ -102,27 +125,46 @@
 {% endblock %}
 
 {% block brand %}
-<a class="navbar-brand pb-brand" href="{{ pb_home_url() }}"><span class="pb-brand-mark">P</span>Pageboygent</a>
+<a class="navbar-brand pb-brand" href="{{ pb_home_url() }}"><img class="pb-brand-logo" src="{{ url_for('static', filename='logo.svg') }}" alt="" width="26" height="26">Pageboygent</a>
 {% endblock %}
 
 {% block main_menu %}
 <ul class="nav navbar-nav mr-auto">
     {% for item in pb_top_nav(admin_view) %}
     <li class="nav-item pb-top-item{% if item.active %} active{% endif %}">
-        <a class="nav-link" href="{{ item.url }}">{{ item.label }}</a>
+        <a class="nav-link" href="{{ item.url }}">{{ _(item.label) }}</a>
     </li>
     {% endfor %}
 </ul>
 {% endblock %}
 
-{% block menu_links %}{% endblock %}
+{% block menu_links %}
+<div class="pb-lang" role="group" aria-label="Language">
+    <a href="#" data-pb-lang="zh" class="{% if pb_lang() == 'zh' %}active{% endif %}" title="中文界面">中</a>
+    <a href="#" data-pb-lang="en" class="{% if pb_lang() == 'en' %}active{% endif %}" title="English interface">EN</a>
+</div>
+<script>
+    document.addEventListener('click', async (e) => {
+        const link = e.target.closest('[data-pb-lang]');
+        if (!link) { return; }
+        e.preventDefault();
+        if (link.dataset.pbLang === window.PB_LANG) { return; }
+        const resp = await fetch('/admin-api/settings', { method: 'POST', credentials: 'same-origin', headers: { 'Content-Type': 'application/json' },
+                                                         body: JSON.stringify({ changes: { ui_language: link.dataset.pbLang } }) });
+        const data = await resp.json().catch(() => ({}));
+        const row = (data.groups || []).flatMap((g) => g.items).find((r) => r.name === 'ui_language');
+        if (row && row.shadowed) { alert(tr('界面语言被环境变量或项目配置文件固定了，在这里切换不会生效：') + row.source_label); return; }
+        location.reload();
+    });
+</script>
+{% endblock %}
 
 {% block page_title %}
 {% if admin_view.pb_section == 'database' %}
-<nav class="pb-subnav" aria-label="数据库">
+<nav class="pb-subnav" aria-label="{{ _('数据库') }}">
     {% for item in pb_db_nav(admin_view) %}
     <a href="{{ item.url }}" class="{% if item.active %}active{% endif %}"{% if item.active %} aria-current="page"{% endif %}>
-        {{ item.label }}
+        {{ _(item.label) }}
         {% if item.count is not none %}<span class="pb-subnav-count">{{ '{:,}'.format(item.count) }}</span>{% endif %}
     </a>
     {% if loop.first %}<span class="pb-subnav-sep" aria-hidden="true"></span>{% endif %}

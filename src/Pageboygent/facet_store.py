@@ -17,6 +17,9 @@
 """
 from __future__ import annotations
 
+from .i18n import t, answer_language_name
+from .config import research_field
+
 import datetime as dt
 import hashlib
 import json
@@ -97,7 +100,7 @@ def group_of(data: dict, group_id: str) -> dict:
     for group in data["groups"]:
         if group["id"] == group_id:
             return group
-    raise ValueError("找不到这个分组")
+    raise ValueError(t("找不到这个分组"))
 
 
 def _new_group(data: dict, pids: list[int], created_by: str = "ai") -> dict:
@@ -310,7 +313,7 @@ def _suggestions(data: dict, index: dict[int, int], vectors: np.ndarray) -> list
         score = _silhouette(vectors[rows], pair)
         if score < overall * 0.5:
             out.append({"key": key, "type": "merge", "groups": sorted([group["id"], groups[j]["id"]]),
-                        "reason": f"两组内容区分度只有 {score:.2f}（分组之间平均 {overall:.2f}）"})
+                        "score": round(score, 2), "overall": round(overall, 2)})
     for group in groups:
         rows = rows_of[group["id"]]
         key = f"split:{group['id']}:{len(rows)}"
@@ -323,7 +326,7 @@ def _suggestions(data: dict, index: dict[int, int], vectors: np.ndarray) -> list
             members = [p for p in group["pids"] if p in index]
             parts = [[members[k] for k in range(len(members)) if halves[k] == c] for c in (0, 1)]
             out.append({"key": key, "type": "split", "groups": [group["id"]], "parts": parts,
-                        "reason": f"组内两块之间的区分度 {score:.2f}，不低于分组之间的平均水平 {overall:.2f}"})
+                        "score": round(score, 2), "overall": round(overall, 2)})
     return out
 
 
@@ -357,16 +360,16 @@ def facets_for_ranking(data: dict) -> list:
 # ---------------------------------------------------------------------------
 
 INITIAL_SYSTEM = """
-下面是一位地球化学、宇宙化学与行星科学研究者文献库中，按内容自动分到同一组的文献（标题 + AI 总结的核心句；前几篇最有代表性）。
-请为这一组起一个简短的中文名称（不超过 14 个字），写 3-5 条中文论点，每条一句，概括它关注的科学问题、对象与方法；再给出 8-15 个英文关键词。
+下面是一位〔研究领域〕方向研究者文献库中，按内容自动分到同一组的文献（标题 + AI 总结的核心句；前几篇最有代表性）。
+请为这一组起一个简短的〔回答语言〕名称（中文不超过 14 个字，英文不超过 6 个词），写 3-5 条〔回答语言〕论点，每条一句，概括它关注的科学问题、对象与方法；再给出 8-15 个英文关键词。
 只依据给出的文献，不要加入列表里没有的内容。只输出 JSON：{"name": "……", "claims": ["……"], "keywords": ["…"]}
-""".strip()
+""".strip().replace("〔研究领域〕", research_field()).replace("〔回答语言〕", answer_language_name())
 
 UPDATE_SYSTEM = """
 下面是研究者文献库中一组文献的现有说明（每行一条），以及这组最近新进的文献（标题 + AI 总结的核心句）。
-只写出这些新文献带来的、现有说明还没有覆盖的内容：0-3 条中文论点（每条一句）和 0-5 个英文关键词。
+只写出这些新文献带来的、现有说明还没有覆盖的内容：0-3 条〔回答语言〕论点（每条一句）和 0-5 个英文关键词。
 没有新内容就返回空数组。只依据给出的文献。只输出 JSON：{"claims": ["……"], "keywords": ["…"]}
-""".strip()
+""".strip().replace("〔研究领域〕", research_field()).replace("〔回答语言〕", answer_language_name())
 
 
 def _norm(text: str) -> str:
@@ -426,6 +429,9 @@ def _describe(papers: list[dict], *, ask, embed, quick_line, pids, vectors, forc
             jobs.append(("update", group["id"], group))
     results = {}
     for kind, group_id, group in jobs[:max_calls]:
+        from .write_queue import stop_point
+
+        stop_point()
         if kind == "initial":
             ordered = list(dict.fromkeys(group.get("representative", []) + group["pids"][::-1]))
             lines = [_paper_line(by_pid[p], quick_line) for p in ordered if p in by_pid][:120]
@@ -500,7 +506,7 @@ def _claim(group: dict, claim_id: str) -> dict:
     for claim in group["claims"]:
         if claim["id"] == claim_id:
             return claim
-    raise ValueError("找不到这一行")
+    raise ValueError(t("找不到这一行"))
 
 
 def _shelve(claim: dict, group: dict, status: str, wait_days: int) -> None:
@@ -553,20 +559,20 @@ def edit_claims(group_id: str, op: str, **kw: Any) -> dict:
         elif op == "accept":
             claim = _claim(group, kw["claim"])
             if claim["status"] != "suggested":
-                raise ValueError("这一行不是待采纳的建议")
+                raise ValueError(t("这一行不是待采纳的建议"))
             claim.update(status="active", changed_at=_iso())
             claim.pop("resurfaced", None)
         elif op == "ignore":
             claim = _claim(group, kw["claim"])
             if claim["status"] != "suggested":
-                raise ValueError("这一行不是待采纳的建议")
+                raise ValueError(t("这一行不是待采纳的建议"))
             again = claim.pop("resurfaced", None)
             if again:
                 _shelve(claim, group, again["from"], int(claim.get("wait_days") or DELETE_WAIT_DAYS) * 2)
             else:
                 _shelve(claim, group, "ignored", IGNORE_WAIT_DAYS)
         else:
-            raise ValueError(f"未知操作：{op}")
+            raise ValueError(t("common:error.unknown_op", op=op))
         _touch(group)
         save(data)
         return {"group": group, **result}
@@ -612,7 +618,7 @@ def restore_group(group_id: str) -> dict:
         data = load()
         old = next((g for g in data.get("deleted_groups", []) if g["id"] == group_id), None)
         if old is None:
-            raise ValueError("找不到这个已删除的分组")
+            raise ValueError(t("找不到这个已删除的分组"))
         library = set(data["library_pids"])
         pids = [p for p in old["pids"] if p in library]
         for group in data["groups"]:
@@ -629,7 +635,7 @@ def restore_group(group_id: str) -> dict:
 def merge_groups(source_id: str, target_id: str) -> dict:
     """把 source 合并进 target：target 保留编号和名称，source 的所有行（含回收站）接在后面。"""
     if source_id == target_id:
-        raise ValueError("不能合并到自己")
+        raise ValueError(t("不能合并到自己"))
     with _lock:
         data = load()
         source, target = group_of(data, source_id), group_of(data, target_id)
@@ -651,7 +657,7 @@ def apply_suggestion(key: str) -> dict:
         data = load()
         suggestion = next((s for s in data["suggestions"] if s["key"] == key), None)
         if suggestion is None:
-            raise ValueError("这条建议已经失效")
+            raise ValueError(t("这条建议已经失效"))
     if suggestion["type"] == "merge":
         a, b = suggestion["groups"]
         groups = {g["id"]: g for g in load()["groups"]}

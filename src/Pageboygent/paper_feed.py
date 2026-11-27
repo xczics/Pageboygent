@@ -26,7 +26,9 @@ from typing import Any
 
 import peewee
 
-from .config import get_config
+from .i18n import t, answer_language_name
+from .write_queue import stop_point
+from .config import get_config, research_field
 
 _workstation = Path(get_config("workstation_dir")).expanduser()
 _data_dir = _workstation / "paper_feed"
@@ -54,6 +56,13 @@ class Feed(_Base):
 
 
 class Item(_Base):
+    """一篇 RSS 文章。后台任务（补全、打分、重新评估）和页面操作（入库、反馈）会同时改同一条记录：
+    只保存改动过的字段（only_save_dirty），后台的状态变化一律带条件更新（见 _save_if），
+    避免后台用旧数据把你刚做的入库 / 反馈覆盖掉。"""
+
+    class Meta:
+        only_save_dirty = True
+
     feed = peewee.ForeignKeyField(Feed, backref="items", on_delete="CASCADE")
     guid = peewee.CharField(index=True)
     dedupe_key = peewee.CharField(unique=True)        # doi:… 或 title:…
@@ -182,6 +191,23 @@ def extract_doi(*texts: str | None) -> str | None:
 _FEED_TITLE_NOISE = re.compile(r"^(?:ScienceDirect Publication|Wiley|AAAS|Recent articles published in)\s*:\s*|\s*:\s*Table of Contents$|\s*-\s*latest papers$", re.I)
 
 
+def _openalex_auth() -> dict:
+    """OpenAlex 自 2026 年 2 月起要求 API key（免费注册）；不带 key 时每天的额度很小。"""
+    key = get_config("openalex_api_key")
+    return {"api_key": key} if key else {}
+
+
+def library_match(library: dict, doi: str | None, title: str | None) -> int | None:
+    """文献库里是否已有这篇：先比 DOI；没有 DOI（或 DOI 对不上）时比规范化后的完整标题（只认精确一致）。"""
+    from .storage import normalize_doi
+
+    doi = normalize_doi(doi)
+    if doi and doi in library:
+        return library[doi]
+    key = _norm_title(title or "")
+    return library.get(f"title:{key}") if len(key) >= 30 else None
+
+
 def clean_journal(name: str | None) -> str | None:
     """RSS 源标题当期刊名时去掉平台前后缀，例如 “ScienceDirect Publication: Icarus” → “Icarus”。"""
     if not name:
@@ -245,7 +271,8 @@ class FeedBackend:
 
         try:
             r = requests.get(f"https://api.openalex.org/works/doi:{doi}", timeout=20,
-                             params={"select": "title,publication_date,authorships,abstract_inverted_index,primary_location"},
+                             params={"select": "title,publication_date,authorships,abstract_inverted_index,primary_location",
+                                     **_openalex_auth()},
                              headers={"User-Agent": self.user_agent})
             if r.ok:
                 d = r.json()
@@ -280,7 +307,7 @@ class FeedBackend:
 
         try:
             r = requests.get("https://api.openalex.org/works", timeout=20, headers={"User-Agent": self.user_agent},
-                             params={"search": title[:300], "per-page": 3,
+                             params={"search": title[:300], "per-page": 3, **_openalex_auth(),
                                      "select": "doi,title,authorships,abstract_inverted_index,primary_location"})
             if not r.ok:
                 return None
@@ -333,15 +360,18 @@ class FeedBackend:
         from .storage import normalize_doi
 
         out = {}
-        for p in Paper.select(Paper.id, Paper.doi):
+        for p in Paper.select(Paper.id, Paper.doi, Paper.title):
             doi = normalize_doi(p.doi)
-            if doi:            # 没有 DOI 的不参与查重
+            if doi:            # 没有 DOI 的不按 DOI 查重
                 out.setdefault(doi, int(p.id))
+            title = _norm_title(p.title or "")
+            if len(title) >= 30:   # 标题太短（如 “Introduction”）不拿来查重
+                out.setdefault(f"title:{title}", int(p.id))
         return out
 
     # ---- Zotero ----
-    def zotero_collection(self, root: str, child: str) -> str:
-        """确保 <root>/<child> 子集合存在，返回其 key。"""
+    def zotero_collection(self, root: str, child: str | None = None) -> str:
+        """确保 <root>/<child> 子集合（child 为空时就是 <root>）存在，返回其 key。"""
         from .zt_tools import _perform_local_write, zot
 
         def _find(name: str, parent: str | None) -> str | None:
@@ -355,13 +385,17 @@ class FeedBackend:
         if root_key is None:
             _perform_local_write(f"create collection {root}", zot.create_collections, [{"name": root}])
             root_key = _find(root, None)
+        if not child:
+            if not root_key:
+                raise RuntimeError(t("feed:error.create_collection", path=root))
+            return root_key
         child_key = _find(child, root_key)
         if child_key is None:
             _perform_local_write(f"create collection {root}/{child}", zot.create_collections,
                                  [{"name": child, "parentCollection": root_key}])
             child_key = _find(child, root_key)
         if not child_key:
-            raise RuntimeError(f"无法在 Zotero 中创建 {root}/{child} 集合（请在 Zotero 中手动创建后重试）")
+            raise RuntimeError(t("feed:error.create_collection", path=f"{root}/{child}"))
         return child_key
 
     def zotero_add_item(self, collection_key: str, item: dict) -> str:
@@ -641,7 +675,7 @@ def preview_feed(url: str) -> dict:
     parsed = backend.parse_feed(url)
     entries = getattr(parsed, "entries", []) or []
     if getattr(parsed, "bozo", False) and not entries:
-        raise ValueError(f"无法解析这个 RSS：{getattr(parsed, 'bozo_exception', '')}")
+        raise ValueError(t("feed:error.parse", error=getattr(parsed, "bozo_exception", "")))
     title = (getattr(parsed, "feed", {}) or {}).get("title") or ""
     with_abstract = sum(1 for e in entries if len(strip_html(e.get("summary") or "")) > 200)
     with_doi = sum(1 for e in entries if extract_doi(e.get("link"), e.get("id"), e.get("summary"),
@@ -654,12 +688,12 @@ def add_feed(name: str, url: str, broad: bool = False) -> Feed:
     init_db()
     url = url.strip()
     if not re.match(r"^https?://", url):
-        raise ValueError("RSS 地址需要以 http:// 或 https:// 开头")
+        raise ValueError(t("RSS 地址需要以 http:// 或 https:// 开头"))
     if Feed.get_or_none(Feed.url == url):
-        raise ValueError("这个 RSS 已经订阅过了")
+        raise ValueError(t("这个 RSS 已经订阅过了"))
     name = (name or "").strip() or preview_feed(url)["title"] or url
     if "/" in name:
-        raise ValueError("名称里不能有 “/”（会用作 Zotero 子集合名）")
+        raise ValueError(t("名称里不能有 “/”（会用作 Zotero 子集合名）"))
     return Feed.create(name=name[:120], url=url, broad=broad)
 
 
@@ -706,7 +740,7 @@ def fetch_feed(feed: Feed, library_dois: dict[str, int]) -> int:
     parsed = backend.parse_feed(feed.url)
     entries = getattr(parsed, "entries", []) or []
     if getattr(parsed, "bozo", False) and not entries:
-        raise ValueError(str(getattr(parsed, "bozo_exception", "解析失败")))
+        raise ValueError(str(getattr(parsed, "bozo_exception", t("解析失败"))))
     feed_title = (getattr(parsed, "feed", {}) or {}).get("title")
     cutoff = dt.datetime.now() - dt.timedelta(days=retention_days())
     new = 0
@@ -726,7 +760,7 @@ def fetch_feed(feed: Feed, library_dois: dict[str, int]) -> int:
         if Item.get_or_none(Item.dedupe_key == key):
             continue  # 同一篇文章出现在多个订阅源里只保留一条
         abstract = strip_html(raw)
-        in_lib = library_dois.get(doi) if doi else None
+        in_lib = library_match(library_dois, doi, title)
         Item.create(
             feed=feed, guid=str(entry.get("id") or entry.get("link") or key)[:250], dedupe_key=key[:250], doi=doi,
             title=title, authors=json.dumps(split_authors(entry.get("authors") or entry.get("author") or "")),
@@ -736,6 +770,7 @@ def fetch_feed(feed: Feed, library_dois: dict[str, int]) -> int:
             abstract_source="rss" if len(abstract) > 200 else "none",
             info="abstract" if len(abstract) > 200 else "title",
             status="in_library" if in_lib else "new", in_library_pid=in_lib,
+            read_at=dt.datetime.now() if in_lib else None,   # 库里已有的不算未读
         )
         new += 1
     return new
@@ -747,6 +782,17 @@ ENRICH_WINDOW_DAYS = 21
 
 
 ENRICH_BUDGET_SECONDS = 180   # 每次运行最多花在补全上的时间：剩下的下次接着补，不耽误打分
+
+
+def _save_if(item: "Item", condition) -> bool:
+    """只在数据库里这条记录仍满足 condition 时，才写入这次改动过的字段（后台任务用：你在此期间入库或表态过就跳过）。"""
+    fields = item.dirty_fields
+    if not fields:
+        return True
+    data = {field: getattr(item, field.name) for field in fields}
+    updated = Item.update(data).where((Item.id == item.id) & condition).execute()
+    item._dirty.clear()
+    return bool(updated)
 
 
 def enrich_one(item: "Item", now: dt.datetime | None = None) -> bool:
@@ -769,12 +815,13 @@ def enrich_one(item: "Item", now: dt.datetime | None = None) -> bool:
                 item.published = dt.datetime.fromisoformat(str(info["published"])[:10])
             except ValueError:
                 pass
-    if item.abstract and not had_abstract and item.status == "scored":
-        item.status = "new"  # 补到了摘要：按“有摘要”重新打分
+    rescore = bool(item.abstract and not had_abstract and item.status == "scored")
     item.enriched = True
     item.enrich_attempts += 1
     item.last_enrich_at = now
     item.save()
+    if rescore:   # 补到了摘要：按“有摘要”重新打分（只在它仍是“已评分”时；你刚入库或表态过就不动）
+        Item.update(status="new").where((Item.id == item.id) & (Item.status == "scored")).execute()
     return before != (item.doi, item.abstract, item.authors, item.journal, item.published)
 
 
@@ -795,6 +842,7 @@ def enrich_items(limit: int = 200, budget_seconds: float | None = None) -> int:
     todo = list(query)
     # 先把结果取完再逐条处理：边遍历未结束的查询边写入，另一线程在此期间写过库时 SQLite 会直接报 database is locked
     for n, item in enumerate(todo, start=1):
+        stop_point()
         if time.monotonic() > deadline:
             break
         _state["progress"] = f"{n}/{len(todo)}"
@@ -908,7 +956,8 @@ def _judge(pairs: list[tuple], model, profile: dict) -> int:
     batch_size = int(get_config("feed_llm_batch_size") or 8)
     judged_count = 0
     for start in range(0, len(pairs), batch_size):
-        _state["progress"] = f"LLM 判断 {min(start + batch_size, len(pairs))}/{len(pairs)}"
+        stop_point()
+        _state["progress"] = t("feed:progress.llm", done=min(start + batch_size, len(pairs)), total=len(pairs))
         batch = pairs[start:start + batch_size]
         payload = [{"id": f"F{item.id}", "title": item.title, "abstract": item.abstract,
                     "authors": "; ".join(item.authors_list()[:8]), "journal": item.journal,
@@ -934,12 +983,13 @@ def score_items(limit: int = 400) -> int:
     items = list(Item.select().where(Item.status == "new").limit(limit))
     if not items:
         return 0
-    _state["progress"] = "准备库内模型"
+    _state["progress"] = t("准备库内模型")
     model, rb, profile = library_model()
     positives, negatives = feedback_vectors(rb)
     shortlist = []
     for n, item in enumerate(items, start=1):
-        _state["progress"] = f"计算相似度 {n}/{len(items)}"
+        stop_point()
+        _state["progress"] = t("feed:progress.similarity", done=n, total=len(items))
         title_only = not item.abstract
         item.info = "title" if title_only else "abstract"
         vec = rb.embed(_item_text(item))
@@ -963,7 +1013,7 @@ def score_items(limit: int = 400) -> int:
                                             features=json.loads(item.features or "{}"), thresholds=thresholds)
         item.status = "scored"
         item.scored_at = dt.datetime.now()
-        item.save()
+        _save_if(item, Item.status == "new")      # 打分期间你已入库 / 表态：保留你的操作
     return len(items)
 
 
@@ -985,14 +1035,15 @@ def rescore_pending() -> dict:
                                        & (Item.created_at > cutoff)))
     if not pending:
         return {"rescored": 0, "judged": 0, "up": 0, "down": 0}
-    _state["progress"] = "准备库内模型"
+    _state["progress"] = t("准备库内模型")
     model, rb, profile = library_model(describe=False)
     positives, negatives = feedback_vectors(rb)
     digest = _profile_digest(feed_ranker.render_profile(model, profile))
     thresholds = load_calibration()
     to_judge, previous = [], {}
     for n, item in enumerate(pending, start=1):
-        _state["progress"] = f"重算基础分 {n}/{len(pending)}"
+        stop_point()
+        _state["progress"] = t("feed:progress.rescore", done=n, total=len(pending))
         old_features = json.loads(item.features or "{}")
         previous[item.id] = (item.band, old_features)
         features = feed_ranker.compute_features(model, rb, vec=feed_ranker.blob_to_vector(item.vector),
@@ -1034,7 +1085,7 @@ def rescore_pending() -> dict:
             item.rerank_note = f"因{cause}{'上升' if rose else '下降'}"
             item.band = band
         item.rescored_at = dt.datetime.now()
-        item.save()
+        _save_if(item, (Item.status == "scored") & Item.feedback.is_null(True))
     return {"rescored": len(pending), "judged": judged, "up": up, "down": down}
 
 
@@ -1048,9 +1099,10 @@ def ingest(item_id: int, mode: str = "manual") -> Item:
     from .storage import normalize_doi
 
     doi = normalize_doi(item.doi)
-    in_library = backend.library_doi_map().get(doi) if doi else None
+    in_library = library_match(backend.library_doi_map(), doi, item.title)
     if in_library:
         item.status, item.in_library_pid, item.ingest_error = "in_library", in_library, None
+        item.read_at = item.read_at or dt.datetime.now()
         item.save()
         return item
     if not item.doi or not item.authors_list():
@@ -1059,9 +1111,10 @@ def ingest(item_id: int, mode: str = "manual") -> Item:
         except Exception as exc:
             print(f"[paper_feed] enrich before ingest failed for item {item.id}: {exc}")
         doi = normalize_doi(item.doi)
-        in_library = backend.library_doi_map().get(doi) if doi else None
+        in_library = library_match(backend.library_doi_map(), doi, item.title)
         if in_library:
             item.status, item.in_library_pid, item.ingest_error = "in_library", in_library, None
+            item.read_at = item.read_at or dt.datetime.now()
             item.save()
             return item
     root = get_config("feed_root_collection") or "RSS_TRACK"
@@ -1073,6 +1126,7 @@ def ingest(item_id: int, mode: str = "manual") -> Item:
             "published": item.published.strftime("%Y-%m-%d") if item.published else ""})
         backend.track_in_pageboygent(key, root)
         item.status, item.zotero_key, item.ingest_error = "ingested", key, None
+        item.read_at = item.read_at or dt.datetime.now()   # 入库了就不必再提醒你读：标为已读
         item.ingest_mode, item.ingested_at = mode, dt.datetime.now()
     except Exception as exc:
         item.ingest_error = f"{type(exc).__name__}: {exc}"
@@ -1150,9 +1204,34 @@ def confirm_ingest(item_id: int) -> Item:
     return ingest(item_id, mode="manual")
 
 
+def mark_settled_read() -> int:
+    """已入库、库中已有的条目一律算已读（含以前留下的），不占未读数。返回本次标注的条数。"""
+    init_db()
+    return Item.update(read_at=dt.datetime.now()).where(
+        Item.read_at.is_null(True) & Item.status.in_(["ingested", "in_library"])).execute()
+
+
 def mark_read(item_id: int) -> None:
     init_db()
     Item.update(read_at=dt.datetime.now()).where((Item.id == item_id) & Item.read_at.is_null(True)).execute()
+
+
+def _unread_low(feed_id: int | None = None):
+    query = (Item.read_at.is_null(True)) & (Item.band == "low") & (Item.status == "scored")
+    if feed_id:
+        query &= Item.feed == int(feed_id)
+    return query
+
+
+def count_unread_low(feed_id: int | None = None) -> int:
+    init_db()
+    return Item.select().where(_unread_low(feed_id)).count()
+
+
+def mark_low_read(feed_id: int | None = None) -> int:
+    """把（某个订阅源或全部的）未读低分条目一次标为已读。只改“已读”，不算 👎、不影响画像。返回标注的条数。"""
+    init_db()
+    return Item.update(read_at=dt.datetime.now()).where(_unread_low(feed_id)).execute()
 
 
 # ---------------------------------------------------------------------------
@@ -1171,11 +1250,12 @@ def week_range(week: str) -> tuple[dt.datetime, dt.datetime]:
 
 
 REPORT_SYSTEM = """
-你是一位地球化学、地球物理、宇宙化学与行星科学方向研究者的文献助理，正在写本周的新文献周报开头。
+你是一位〔研究领域〕方向研究者的文献助理，正在写本周的新文献周报开头。
 只依据下面列出的文章（标题、摘要、推荐理由）写作，不要提及列表之外的文章或你记忆中的研究；用 [F编号] 指代文章。
 输出 Markdown：先用 3-5 句话概括本周值得关注的内容与趋势（例如几篇文章不约而同地讨论了同一问题），
 再按兴趣方向各写一句要点。总长度 300 字以内。
-""".strip()
+所有写给用户看的文字一律用〔回答语言〕书写（专业术语、文献标题、检索词可保留英文原文）。
+""".strip().replace("〔研究领域〕", research_field()).replace("〔回答语言〕", answer_language_name())
 
 
 def generate_report(week: str | None = None, *, use_llm: bool = True) -> Report:
@@ -1259,16 +1339,19 @@ def _stage(result: dict, name: str, fn, *args):
             error = exc
         break
     where = traceback.extract_tb(error.__traceback__)[-1]
-    message = f"{name}：{type(error).__name__}: {error}（{Path(where.filename).name}:{where.lineno}）"
+    message = t("feed:error.stage", stage=t(name), error=f"{type(error).__name__}: {error}",
+                where=f"{Path(where.filename).name}:{where.lineno}")
     print(f"[paper_feed] {message}")
     traceback.print_exception(error)
     result["errors"].append(message)
+    result.setdefault("stage_errors", []).append(message)
     return None
 
 
 def _fetch_all(result: dict, library_dois: dict) -> int:
     fetched = 0
     for feed in list(Feed.select().where(Feed.enabled == True)):  # noqa: E712
+        stop_point()
         try:
             new = fetch_feed(feed, library_dois)
             feed.last_new_count, feed.last_error = new, None
@@ -1286,7 +1369,7 @@ def run_once(force: bool = False) -> dict:
     各阶段互相隔离：某一步出错只记下来，其余照常进行（例如补全失败不影响打分）。"""
     init_db()
     if not _run_lock.acquire(blocking=False):
-        return {"skipped": "已在运行"}
+        return {"skipped": t("已在运行")}
     try:
         _state["running"] = True
         result: dict[str, Any] = {"fetched": 0, "errors": []}
@@ -1299,6 +1382,7 @@ def run_once(force: bool = False) -> dict:
         result["rescored"] = _stage(result, "重新评估待处理文章", rescore_pending)
         result["auto_ingested"] = _stage(result, "自动入库", auto_ingest)
         result["zotero_synced"] = _stage(result, "同步到 Zotero", sync_ingested_to_zotero)
+        _stage(result, "整理已读", mark_settled_read)
         pruned = _stage(result, "清理旧条目", prune_old_items)
         result["pruned"] = pruned["deleted"] if pruned else None
         last_week = iso_week(dt.date.today() - dt.timedelta(days=7))
@@ -1306,16 +1390,14 @@ def run_once(force: bool = False) -> dict:
                 (Item.created_at >= week_range(last_week)[0]) & (Item.created_at < week_range(last_week)[1])).exists():
             if _stage(result, "生成周报", generate_report, last_week) is not None:
                 result["report"] = last_week
-        stage_errors = [e for e in result["errors"] if "：" in e and e.split("：", 1)[0] in STAGE_NAMES]
         _state.update(last_run_at=dt.datetime.now().isoformat(timespec="seconds"), last_result=result,
-                      last_error="；".join(stage_errors) or None)
+                      last_error=t("common:list_sep_strong").join(result.get("stage_errors", [])) or None)
         return result
     finally:
         _state.update(running=False, stage=None, progress=None)
         _run_lock.release()
 
 
-STAGE_NAMES = {"读取文献库 DOI", "抓取", "补全摘要", "校准门槛", "打分", "重新评估待处理文章", "自动入库", "同步到 Zotero", "清理旧条目", "生成周报"}
 
 
 def retention_days() -> int:
@@ -1350,8 +1432,9 @@ def status() -> dict:
     interval = float(get_config("feed_fetch_interval_hours") or 6)
     return {
         **_state,
+        "stage": t(_state["stage"]) if _state.get("stage") else None,   # 阶段名在内部用中文，显示时翻译
         "last_fetch_at": last.strftime("%Y-%m-%d %H:%M") if last else None,
-        "next_fetch_at": (last + dt.timedelta(hours=interval)).strftime("%Y-%m-%d %H:%M") if last else "添加订阅源后开始",
+        "next_fetch_at": (last + dt.timedelta(hours=interval)).strftime("%Y-%m-%d %H:%M") if last else t("添加订阅源后开始"),
         "interval_hours": interval,
     }
 

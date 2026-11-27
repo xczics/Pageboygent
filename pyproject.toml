@@ -1,0 +1,66 @@
+[build-system]
+requires = ["setuptools>=77"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "pageboygent"
+version = "0.1.0"
+description = "A local research assistant for your Zotero library: full-text RAG, agentic literature search, AI reviews, deep search and RSS paper tracking."
+readme = "README.md"
+license = "GPL-3.0-or-later"
+license-files = ["LICENSE"]
+authors = [{ name = "Zircon Shawn" }]
+requires-python = ">=3.13"
+keywords = ["zotero", "literature", "rag", "research", "llm", "rss", "academic"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Environment :: Web Environment",
+    "Framework :: Flask",
+    "Intended Audience :: Science/Research",
+    "Natural Language :: Chinese (Simplified)",
+    "Operating System :: MacOS",
+    "Operating System :: POSIX :: Linux",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3 :: Only",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Scientific/Engineering",
+    "Topic :: Text Processing :: Indexing",
+]
+dependencies = [
+    "chromadb>=1.0",
+    "feedparser>=6.0",
+    "Flask>=3.0",
+    "Flask-Admin[peewee]>=2.0",
+    "Markdown>=3.5",
+    "markdownify>=0.11",
+    "MarkupSafe>=2.1",
+    "numpy>=2.0",
+    "openai>=1.0",
+    "peewee>=3.17",
+    "pyzotero>=1.15",
+    "requests>=2.31",
+    "scikit-learn>=1.3",
+    "Whoosh>=2.7",
+    "worthy>=0.0.2",
+]
+
+[project.optional-dependencies]
+test = ["pytest>=8"]
+
+[project.urls]
+Homepage = "https://github.com/xczics/Pageboygent"
+Issues = "https://github.com/xczics/Pageboygent/issues"
+
+[project.scripts]
+pageboygent = "Pageboygent.cli:main"
+pageboygent-export-config-docs = "Pageboygent.config:_cli_export_config_docs"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+exclude = ["Pageboygent.tests", "Pageboygent.tests.*"]
+
+[tool.setuptools.package-data]
+Pageboygent = ["templates/admin/*.html", "tags.txt", "locales/*.json", "static/*"]
+
+[tool.pytest.ini_options]
+testpaths = ["src/Pageboygent/tests"]

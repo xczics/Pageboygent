@@ -22,6 +22,8 @@ def _import_all_package_modules() -> None:
     from . import __name__ as pkg_name
     from . import __path__ as pkg_path
     for module_info in pkgutil.iter_modules(pkg_path):
+        if module_info.name in {"__main__", "tests"}:   # 导入 __main__ 会直接执行命令行入口
+            continue
         full_name = f"{pkg_name}.{module_info.name}"
         try:
             importlib.import_module(full_name)
@@ -57,7 +59,7 @@ def build_parser() -> argparse.ArgumentParser:
         "--require",
         nargs="*",
         default=[],
-        help="Required keys to validate, e.g. --require ds_api_key zotero_key",
+        help="Required keys to validate, e.g. --require ds_api_key zotero_id",
     )
     parser.add_argument(
         "--show-config",
@@ -67,8 +69,9 @@ def build_parser() -> argparse.ArgumentParser:
 
     subparsers = parser.add_subparsers(dest="command")
     serve_parser = subparsers.add_parser(
-        "serve-storage",
-        help="Start a lightweight web server to display storage tables",
+        "run",
+        aliases=["serve-storage"],   # 旧名字，保留兼容
+        help="Start Pageboygent: the web app plus the background pipeline",
     )
     serve_parser.add_argument(
         "bind",
@@ -95,13 +98,13 @@ def build_parser() -> argparse.ArgumentParser:
 
     mineru_worker_parser = subparsers.add_parser(
         "mineru-worker",
-        help="Run the MinerU API PDF->MD worker (started automatically by serve-storage)",
+        help="Run the MinerU API PDF->MD worker (started automatically by `pageboygent run`)",
     )
     mineru_worker_parser.add_argument(
         "--parent-pid",
         type=int,
         default=None,
-        help="Exit when this parent process is gone (used by serve-storage)",
+        help="Exit when this parent process is gone (used by `pageboygent run`)",
     )
 
     migrate_parser = subparsers.add_parser(
@@ -174,7 +177,7 @@ def main(argv: list[str] | None = None) -> int:
         print(json.dumps(data, ensure_ascii=False, indent=2))
         return 0
 
-    if args.command == "serve-storage":
+    if args.command in {"run", "serve-storage"}:
         from .ui import serve_storage
 
         # 透传全局配置参数，保证自动拉起的 mineru-worker 子进程读到同一套配置

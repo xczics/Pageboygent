@@ -20,7 +20,8 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any
 
-from .config import get_config
+from .i18n import t, answer_language_name
+from .config import get_config, research_field
 from .lit_search import (
     SEARCH_TOOLS,
     LitSearchAgent,
@@ -33,7 +34,7 @@ from .lit_search import (
 )
 
 CHAT_SYSTEM_PROMPT = """
-你是 Pageboygent 的研究助理，服务于地球化学、地球物理、行星科学与天体物理方向的研究者，正在和用户对话。
+你是 Pageboygent 的研究助理，服务于〔研究领域〕方向的研究者，正在和用户对话。
 你可以调用工具检索用户本地追踪的文献库：每篇文献有原文全文（Markdown，已切块）、AI 预生成的快速总结，
 部分还有主题总结与精读笔记。库内文献绝大多数为英文。
 
@@ -69,8 +70,8 @@ P# 是文献编号（paper_id），E# 是证据片段编号，R# 是参考文献
 ## 回答方式
 - 先用一两句话直接回答，再按需要展开（Markdown）。长度与问题匹配，简单问题简短回答。
 - 不要复述大段原文，系统会把你引用的 E# 原文附在回答下方。不要输出 JSON。
-- 用用户使用的语言回答。
-""".strip()
+默认用〔回答语言〕回答；如果用户明确用另一种语言提问，就用用户的语言（专业术语、文献标题、检索词可保留英文原文）。
+""".strip().replace("〔研究领域〕", research_field()).replace("〔回答语言〕", answer_language_name())
 
 CHAT_FORCE_FINISH_PROMPT = (
     "已达到本轮的工具调用上限。请不要再调用工具，直接根据目前已获得的证据用文字回答；"
@@ -121,7 +122,7 @@ def validate_chat_answer(text: str, toolbox: LitSearchToolbox) -> dict:
         if pid not in paper_ids:
             paper_ids.append(pid)
     for mention in unsupported_author_year_mentions(answer, toolbox):
-        warnings.append(f"回答提到了 \"{mention}\"，但本对话的检索结果中没有这篇文献，可能来自模型记忆，请谨慎核实")
+        warnings.append(t("chat:warn.unsupported_mention", mention=mention))
     papers = [meta for meta in (toolbox.paper(pid) for pid in paper_ids) if meta]
     return {
         "answer": answer.strip(),
@@ -159,13 +160,13 @@ class ChatAgent(LitSearchAgent):
         self._remember_turn(question, result)
         for warning in result["warnings"]:
             self._emit("warn", warning)
-        self._emit("system", f"完成：引用 {len(result['evidence'])} 条证据、{len(result['cited_papers'])} 篇文献。")
+        self._emit("system", t("chat:done", evidence=len(result['evidence']), papers=len(result['cited_papers'])))
         return result
 
     def _fallback(self, last_text: str, question: str = "") -> dict:
-        text = last_text or "抱歉，这一轮没能整理出回答（工具调用已达上限）。可以换个问法，或让我基于已找到的证据再总结一次。"
+        text = last_text or t("抱歉，这一轮没能整理出回答（工具调用已达上限）。可以换个问法，或让我基于已找到的证据再总结一次。")
         result = self._finalize_answer(text, question)
-        result["warnings"].insert(0, "模型未能在工具调用上限内给出完整回答，以上为最后的中间输出。")
+        result["warnings"].insert(0, t("模型未能在工具调用上限内给出完整回答，以上为最后的中间输出。"))
         return result
 
     def _turn_digest(self, question: str, result: dict) -> str:
@@ -255,7 +256,7 @@ def migrate_legacy_histories(target_dir: Path, source_dirs: list[Path] | None = 
                     "trace": [],
                     "result": {"answer": answer, "cited_papers": [], "evidence": {}, "paper_cites": {},
                                "warnings": [], "legacy": True, "stats": {}} if answer else None,
-                    "error": "" if answer else "旧版对话中这一问没有得到回答。",
+                    "error": "" if answer else t("旧版对话中这一问没有得到回答。"),
                 } for index, (question, answer) in enumerate(pairs)]
                 if not turns:
                     continue

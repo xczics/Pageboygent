@@ -34,6 +34,22 @@ _quick: deque[WriteTask] = deque()
 _slow: deque[WriteTask] = deque()
 _consumer_thread: threading.Thread | None = None
 _in_task = False  # 只由消费线程读写，防止任务内部再触发 checkpoint 嵌套执行
+_shutdown_event = threading.Event()   # 关机（Ctrl-C / SIGTERM）：所有后台长循环在下一个安全点退出
+
+
+def request_shutdown() -> None:
+    """通知所有后台任务（总结、主题总结、状态检查、文献追踪……）在下一个安全点停下。"""
+    _shutdown_event.set()
+
+
+def shutdown_requested() -> bool:
+    return _shutdown_event.is_set()
+
+
+def stop_point() -> None:
+    """任意线程上的后台长循环里调用：已经要求关机就抛 KeyboardInterrupt（已完成的条目都已保存）。"""
+    if _shutdown_event.is_set():
+        raise KeyboardInterrupt("shutdown requested")
 
 
 def submit(description: str, func: Callable[[], object], *, quick: bool = True) -> int:
@@ -89,7 +105,12 @@ def checkpoint() -> None:
 
     仅在 heartbeat 线程上、且不在执行任务时生效；调用方需保证此处没有未提交的显式事务。
     """
-    if _in_task or threading.current_thread() is not _consumer_thread:
+    if threading.current_thread() is not _consumer_thread:
+        return
+    if _shutdown_event.is_set() and not _in_task:
+        # 关机：heartbeat 里的长循环（快速总结、主题总结、PDF/全文状态……）都在这里停下，由心跳线程的 except 收尾
+        raise KeyboardInterrupt("shutdown requested")
+    if _in_task:
         return
     while (task := _pop(include_slow=False)) is not None:
         _run(task)

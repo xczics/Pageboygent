@@ -27,6 +27,7 @@ try:
 except Exception:  # pragma: no cover - optional dependency fallback
     _markdown_render_impl = None
 
+from .i18n import t
 from .config import get_config
 from .storage import BaseModel, MDStatus, Paper, PDFStatus, Theme, ThemePaper, TracedCollection
 from . import storage
@@ -373,248 +374,6 @@ LIST_VIEW_JS = """
 """.strip()
 
 
-RAG_HOME_TEMPLATE = """
-<!doctype html>
-<html lang="zh-CN">
-<head>
-    <meta charset="utf-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>Pageboygent RAG Search</title>
-    <style>
-        :root {
-            --bg: #f6f7fb;
-            --card: #ffffff;
-            --text: #1f2937;
-            --muted: #6b7280;
-            --line: #d1d5db;
-            --accent: #0f766e;
-            --accent-weak: #ccfbf1;
-            --danger: #b91c1c;
-        }
-
-        * { box-sizing: border-box; }
-
-        body {
-            margin: 0;
-            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-            color: var(--text);
-            background: radial-gradient(circle at top right, #ecfeff 0%, var(--bg) 40%, #eef2ff 100%);
-        }
-
-        .container {
-            width: min(1100px, 92vw);
-            margin: 28px auto;
-        }
-
-        .header {
-            display: flex;
-            align-items: center;
-            justify-content: space-between;
-            margin-bottom: 14px;
-        }
-
-        h1 {
-            margin: 0;
-            font-size: 1.45rem;
-            letter-spacing: 0.2px;
-        }
-
-        .admin-link {
-            color: var(--accent);
-            text-decoration: none;
-            font-weight: 600;
-        }
-
-        .panel {
-            background: var(--card);
-            border: 1px solid var(--line);
-            border-radius: 14px;
-            padding: 14px;
-            box-shadow: 0 8px 30px rgba(31, 41, 55, 0.08);
-        }
-
-        .search-form {
-            display: grid;
-            grid-template-columns: 1fr 140px 120px;
-            gap: 10px;
-            align-items: stretch;
-        }
-
-        .search-form textarea,
-        .search-form input {
-            width: 100%;
-            border: 1px solid var(--line);
-            border-radius: 10px;
-            padding: 10px;
-            font-size: 14px;
-            line-height: 1.4;
-            resize: vertical;
-            background: #ffffff;
-        }
-
-        .search-form textarea {
-            min-height: 78px;
-        }
-
-        .search-form button {
-            border: none;
-            border-radius: 10px;
-            padding: 10px 14px;
-            font-size: 14px;
-            font-weight: 700;
-            color: #ffffff;
-            background: linear-gradient(135deg, #0f766e, #0e7490);
-            cursor: pointer;
-        }
-
-        .form-hint {
-            margin-top: 8px;
-            color: var(--muted);
-            font-size: 13px;
-        }
-
-        .error {
-            margin-top: 10px;
-            padding: 10px;
-            border-radius: 10px;
-            border: 1px solid #fecaca;
-            color: var(--danger);
-            background: #fef2f2;
-        }
-
-        .results {
-            margin-top: 16px;
-            display: grid;
-            gap: 10px;
-        }
-
-        .result-item {
-            border: 1px solid var(--line);
-            border-radius: 12px;
-            padding: 12px;
-            background: #ffffff;
-        }
-
-        .meta {
-            font-size: 12px;
-            color: var(--muted);
-            display: flex;
-            flex-wrap: wrap;
-            gap: 10px;
-            margin-bottom: 8px;
-        }
-
-        .score {
-            display: inline-block;
-            padding: 2px 8px;
-            border-radius: 999px;
-            background: var(--accent-weak);
-            color: #115e59;
-            font-weight: 700;
-        }
-
-        .snippet {
-            margin: 0;
-            word-break: break-word;
-            line-height: 1.55;
-        }
-
-        .snippet p {
-            margin: 0.35rem 0;
-        }
-
-        .snippet pre {
-            margin: 0.5rem 0;
-            padding: 0.6rem 0.8rem;
-            border-radius: 8px;
-            background: #f8fafc;
-            overflow-x: auto;
-            border: 1px solid #e2e8f0;
-        }
-
-        .snippet code {
-            font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
-            font-size: 0.92em;
-        }
-
-        .snippet ul,
-        .snippet ol {
-            margin: 0.35rem 0 0.35rem 1.2rem;
-            padding: 0;
-        }
-
-        .empty {
-            margin-top: 12px;
-            color: var(--muted);
-            font-size: 14px;
-        }
-
-        @media (max-width: 760px) {
-            .search-form {
-                grid-template-columns: 1fr;
-            }
-        }
-    </style>
-</head>
-<body>
-    <div class="container">
-        <div class="header">
-            <h1>RAG 搜索</h1>
-            <a class="admin-link" href="{{ url_for('admin.index') }}">进入管理后台</a>
-        </div>
-
-        <div class="panel">
-            <form method="get" action="{{ url_for('index') }}" class="search-form">
-                <textarea name="q" placeholder="输入问题或检索关键词...">{{ query }}</textarea>
-                <input type="number" min="1" max="50" name="top_k" value="{{ top_k }}" placeholder="top_k">
-                <button type="submit">开始检索</button>
-            </form>
-            <div class="form-hint">默认返回前 {{ top_k }} 条结果。可在上方调整。</div>
-
-            {% if error %}
-            <div class="error">{{ error }}</div>
-            {% endif %}
-
-            {% if searched and not results and not error %}
-            <div class="empty">未检索到结果，请尝试更具体的关键词。</div>
-            {% endif %}
-
-            {% if results %}
-            <div class="results">
-                {% for item in results %}
-                <article class="result-item">
-                    <div class="meta">
-                        <span class="score">score: {{ '%.4f'|format(item.score if item.score is not none else 0.0) }}</span>
-                        <span>paper_id: {{ item.paper_id }}</span>
-                        <span>md_key: {{ item.md_key }}</span>
-                        <span>line: {{ item.line_number }}</span>
-                    </div>
-                    <div class="snippet">{{ item.rendered_text }}</div>
-                </article>
-                {% endfor %}
-            </div>
-            {% endif %}
-        </div>
-    </div>
-    <script>
-        window.MathJax = {
-            tex: {
-                inlineMath: [['$', '$'], ['\\(', '\\)']],
-                displayMath: [['$$', '$$'], ['\\[', '\\]']],
-                processEscapes: true,
-            },
-            options: {
-                processHtmlClass: 'snippet',
-                ignoreHtmlClass: 'no-mathjax',
-            },
-        };
-    </script>
-    <script defer src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-chtml.js"></script>
-</body>
-</html>
-""".strip()
-
-
 def _render_markdown_html(value: object | None) -> Markup | str:
     if not value:
         return ""
@@ -636,7 +395,7 @@ def _render_markdown_html(value: object | None) -> Markup | str:
 
 def _flash_queued(description: str) -> None:
     pending = write_queue.pending_count()
-    flash(f"已提交写入队列：{description}（待处理 {pending} 个），将在 heartbeat 空闲时执行，稍后刷新查看结果。", "info")
+    flash(t("db:write_queued", description=description, pending=pending), "info")
 
 
 def _same_form_value(a: object, b: object) -> bool:
@@ -1099,44 +858,6 @@ def _load_bib_full_info_map(raw_paper_ids: list[object]) -> dict[int, str]:
     return bib_map
 
 
-def _build_rag_search_context() -> dict:
-    query = (request.args.get("q") or "").strip()
-    top_k_raw = (request.args.get("top_k") or "10").strip()
-
-    try:
-        top_k = int(top_k_raw)
-    except ValueError:
-        top_k = 10
-    top_k = max(1, min(50, top_k))
-
-    results: list[dict] = []
-    error = ""
-    searched = bool(query)
-
-    if query:
-        try:
-            results = rag.retrieve(query=query, top_k=top_k)
-            bib_full_info_map = _load_bib_full_info_map([item.get("paper_id") for item in results])
-            normalized_results: list[dict] = []
-            for item in results:
-                row = dict(item)
-                paper_id = _normalize_paper_id(item.get("paper_id"))
-                row["bib_full_info"] = bib_full_info_map.get(paper_id, "") if paper_id is not None else ""
-                row["rendered_text"] = _render_markdown_html(item.get("text"))
-                normalized_results.append(row)
-            results = normalized_results
-        except Exception as exc:
-            error = f"检索失败: {exc}"
-
-    return {
-        "query": query,
-        "top_k": top_k,
-        "results": results,
-        "error": error,
-        "searched": searched,
-    }
-
-
 def _as_bool(value: object) -> bool:
     if isinstance(value, bool):
         return value
@@ -1150,6 +871,20 @@ def _as_bool(value: object) -> bool:
 # ---------------------------------------------------------------------------
 
 _LIT_CITE_HTML_RE = re.compile(r"\[(E\d+|R\d+|P\d+|\?)\]")
+_EVIDENCE_LABEL_WORDS = ["AI 快速总结", "主题总结", "参考文献", "笔记", "原文", "引自", "（精读）"]
+
+
+def _localize_evidence_label(label: str) -> str:
+    """证据标签（如“原文 L12”“主题总结 · 某主题”）同时也给模型看，所以存的是中文；只在页面上显示时翻译固定的词。"""
+    if not label:
+        return label
+    out = label
+    for word in _EVIDENCE_LABEL_WORDS:
+        if word in out:
+            out = out.replace(word, t(word))
+    return out
+
+
 _LIT_KIND_LABELS = {"fulltext": "原文", "summary": "AI 快速总结", "theme": "主题总结", "note": "笔记", "reference": "参考文献"}
 _LIT_RELEVANCE_LABELS = {"high": "高相关", "medium": "中相关", "low": "低相关"}
 
@@ -1176,7 +911,7 @@ def _lit_render_with_citations(text: str, result: Mapping[str, Any], turn_id: st
     def _replace(match: re.Match) -> str:
         ref = match.group(1)
         if ref == "?":
-            return '<span class="lit-cite lit-cite-bad" title="无效引用（已被系统剔除）">?</span>'
+            return '<span class="lit-cite lit-cite-bad" title="' + t("无效引用（已被系统剔除）") + '">?</span>'
         if ref[0] in "ER":
             ev = evidence.get(ref)
             if not ev:
@@ -1197,8 +932,8 @@ def _lit_render_evidence(ev: Mapping[str, Any]) -> dict:
     return {
         "eid": ev["eid"],
         "kind": ev["kind"],
-        "kind_label": _LIT_KIND_LABELS.get(ev["kind"], ev["kind"]),
-        "label": ev["label"],
+        "kind_label": t(_LIT_KIND_LABELS.get(ev["kind"], ev["kind"])),
+        "label": _localize_evidence_label(ev["label"]),
         "methods": ev.get("methods", []),
         "text_html": str(_render_markdown_html(ev["text"])),
     }
@@ -1225,7 +960,7 @@ def _lit_render_turn(turn: Mapping[str, Any]) -> dict:
         candidates.append({
             "paper": cand["paper"],
             "relevance": cand["relevance"],
-            "relevance_label": _LIT_RELEVANCE_LABELS.get(cand["relevance"], cand["relevance"]),
+            "relevance_label": t(_LIT_RELEVANCE_LABELS.get(cand["relevance"], cand["relevance"])),
             "reason_html": _lit_render_with_citations(cand.get("reason", ""), result, turn["id"]),
             "auto_evidence": cand.get("auto_evidence", False),
             "summary_only": cand.get("summary_only", False),
@@ -1245,7 +980,7 @@ def _lit_render_turn(turn: Mapping[str, Any]) -> dict:
             "fields": ref.get("fields", {}),
             "doi_url": ref.get("doi_url"),
             "relevance": ref["relevance"],
-            "relevance_label": _LIT_RELEVANCE_LABELS.get(ref["relevance"], ref["relevance"]),
+            "relevance_label": t(_LIT_RELEVANCE_LABELS.get(ref["relevance"], ref["relevance"])),
             "reason_html": _lit_render_with_citations(ref.get("reason", ""), result, turn["id"]),
             "cited_by": ref.get("cited_by", []),
             "in_library": ref.get("in_library"),
@@ -1262,7 +997,7 @@ def _lit_render_turn(turn: Mapping[str, Any]) -> dict:
         "judgement_chars": len(result.get("overall_judgement", "")),
         "gaps_html": _lit_render_with_citations(result.get("gaps", ""), result, turn["id"]),
         "confidence": result.get("confidence", "low"),
-        "confidence_label": {"high": "高", "medium": "中", "low": "低"}.get(result.get("confidence", "low"), "低"),
+        "confidence_label": t({"high": "lit:confidence.high", "medium": "lit:confidence.medium", "low": "lit:confidence.low"}.get(result.get("confidence", "low"), "lit:confidence.low")),
         "search_summary": result.get("search_summary", ""),
         "candidates": candidates,
         "secondary_references": secondary,
@@ -1368,17 +1103,34 @@ def _build_session_context(tab: str) -> str:
 
 
 class HomeView(AdminIndexView):
-    """主页：文献追踪（RSS）看板 + 阅读器 + 设置。兼容旧的 ?tab=chat|lit|rag 链接（跳转到对应页面）。"""
+    """主页 = 深度搜索（点左上角 “Pageboygent” 进入）。兼容旧链接：?tab=chat|lit 跳到对应页面，
+    旧主页（文献追踪）的 ?view= / ?tab=settings 等跳到 /admin/tracking/。"""
 
-    pb_section = "home"
+    pb_section = "search"
 
     @expose("/")
     def index(self):
         tab = (request.args.get("tab") or "").lower()
-        if tab in {"chat", "lit", "rag"}:
-            target = {"lit": "litsearch.index", "rag": "rag.index"}.get(tab, "chat.index")
+        if tab in {"chat", "lit"}:
+            target = {"lit": "litsearch.index"}.get(tab, "chat.index")
             params = {k: v for k, v in request.args.items() if k != "tab"}
             return redirect(url_for(target, **params))
+        if request.args.get("view") or tab in {"overview", "reader", "pool", "reports", "profile", "settings"}:
+            return redirect(url_for("tracking.index", view=request.args.get("view") or tab))
+        from . import settings
+
+        missing = settings.describe()["missing"]
+        return self.render("admin/deep_search.html", query=(request.args.get("q") or "").strip(),
+                           missing_settings=[m["label"] for m in missing])
+
+
+class TrackingView(BaseView):
+    """文献追踪：RSS 看板、阅读器、候选池、周报、画像，以及全部设置。"""
+
+    pb_section = "tracking"
+
+    @expose("/")
+    def index(self):
         from . import settings
 
         missing = settings.describe()["missing"]
@@ -1387,7 +1139,7 @@ class HomeView(AdminIndexView):
 
 
 class AgentPageView(BaseView):
-    """AI 功能页面（对话 / 文献检索 / RAG 搜索），共用 rag_home.html。"""
+    """AI 功能页面（对话 / 文献检索 / 综述），共用 rag_home.html。"""
 
     pb_section = "ai"
     tab = "chat"
@@ -1396,7 +1148,6 @@ class AgentPageView(BaseView):
     def index(self):
         context = {
             "active_tab": self.tab,
-            **_build_rag_search_context(),
             "chat_session_id": _build_session_context("chat") if self.tab == "chat" else "",
             "lit_session_id": _build_session_context("lit") if self.tab == "lit" else "",
             "review_project_id": (request.args.get("review_project") or "") if self.tab == "review" else "",
@@ -1410,10 +1161,6 @@ class ChatPageView(AgentPageView):
 
 class LitSearchPageView(AgentPageView):
     tab = "lit"
-
-
-class RagPageView(AgentPageView):
-    tab = "rag"
 
 
 class ReviewPageView(AgentPageView):
@@ -1431,10 +1178,10 @@ def _review_stage_label(key: str | None) -> str:
     if not key:
         return ""
     if key.startswith("notes:"):
-        return "精读 · " + key.split(":", 1)[1]
+        return t("review:stage.notes", name=key.split(":", 1)[1])
     if key.startswith("review:"):
-        return "子课题综述 · " + key.split(":", 1)[1]
-    return _REVIEW_STAGE_KEYS.get(key, key)
+        return t("review:stage.subreview", name=key.split(":", 1)[1])
+    return t(_REVIEW_STAGE_KEYS.get(key, key))
 
 
 def _review_state_payload(project_id: str) -> dict:
@@ -1480,19 +1227,19 @@ def _review_state_payload(project_id: str) -> dict:
             state = "error"
         if imported and not done:
             # 历史导入：旧流程没有这一步，或只留下了部分产物
-            state, detail = ("done", detail) if detail else ("skipped", "旧流程无此步")
-        return {"key": key, "label": review_pipeline.STAGE_LABELS[key], "state": state, "detail": detail}
+            state, detail = ("done", detail) if detail else ("skipped", t("旧流程无此步"))
+        return {"key": key, "label": t(review_pipeline.STAGE_LABELS[key]), "state": state, "detail": detail}
 
     stages = [
         _stage("collect", bool(project.get("papers")),
-               f"{len(project.get('papers', {}))} 篇可用 · {len(project.get('excluded', []))} 篇排除" if project.get("papers") else ""),
-        _stage("plan", bool(plan), f"{len(subtopics)} 个子课题" if plan else ""),
+               t("review:collect.detail", usable=len(project.get('papers', {})), excluded=len(project.get('excluded', []))) if project.get("papers") else ""),
+        _stage("plan", bool(plan), t("review:plan.detail", n=len(subtopics)) if plan else ""),
         _stage("notes", bool(plan) and notes_total > 0 and notes_done == notes_total,
                (f"{notes_done} / {notes_total}" + (f"（缺 {notes_total - notes_done} 篇）"
                                                   if imported and notes_done < notes_total else "")) if plan else ""),
         _stage("reviews", bool(plan) and reviews_done == len(subtopics) and bool(subtopics),
                f"{reviews_done} / {len(subtopics)}" if plan else ""),
-        _stage("final", final_text is not None, "已完成" if final_text else ""),
+        _stage("final", final_text is not None, t("已完成") if final_text else ""),
     ]
 
     # Token 仪表：整个项目 + 当前（或最近）阶段
@@ -1520,7 +1267,7 @@ def _review_state_payload(project_id: str) -> dict:
             "imported": bool(project.get("imported")),
             "source_note": project.get("source_note", ""),
             # 附件：原始规划文件等（只列出确实存在的）
-            "attachments": [a for a in ([{"label": "规划（模型原始输出）", "path": "plan/plan.xml"}]
+            "attachments": [a for a in ([{"label": t("规划（模型原始输出）"), "path": "plan/plan.xml"}]
                                         + project.get("attachments", []))
                             if store.read_document(project_id, a["path"]) is not None],
             "final": {"path": final_path, "html": str(_render_markdown_html(final_text)) if final_text else ""},
@@ -1596,7 +1343,7 @@ def _ai_usage_summary(limit_recent: int = 6) -> dict:
             endpoint = "chat.index" if kind == "chat" else "litsearch.index"
             recent.append({
                 "kind": kind,
-                "kind_label": "对话" if kind == "chat" else "文献检索",
+                "kind_label": t("对话") if kind == "chat" else t("文献检索"),
                 "title": turns[0].get("question", "")[:60],
                 "turns": len(turns),
                 "mtime": path.stat().st_mtime,
@@ -1615,9 +1362,9 @@ def _ai_spend() -> dict:
     sessions = _ai_usage_summary()
     ledger = llm_usage.summarize()
     parts = [
-        {"label": "AI 对话", "tokens": sessions["by_kind"]["chat"]["tokens"], "cost": sessions["by_kind"]["chat"]["cost"]},
-        {"label": "AI 文献检索", "tokens": sessions["by_kind"]["lit"]["tokens"], "cost": sessions["by_kind"]["lit"]["cost"]},
-    ] + [{"label": e["category"], "tokens": e["tokens"], "cost": e["cost"]} for e in ledger["categories"]]
+        {"label": t("AI 对话"), "tokens": sessions["by_kind"]["chat"]["tokens"], "cost": sessions["by_kind"]["chat"]["cost"]},
+        {"label": t("AI 文献检索"), "tokens": sessions["by_kind"]["lit"]["tokens"], "cost": sessions["by_kind"]["lit"]["cost"]},
+    ] + [{"label": t(e["category"]), "tokens": e["tokens"], "cost": e["cost"]} for e in ledger["categories"]]
     parts = [part for part in parts if part["tokens"]]
     total_cost = sum(part["cost"] for part in parts)
     for part in parts:
@@ -1645,8 +1392,8 @@ def _year_histogram(years: list[int], start: int = 1990) -> dict:
             earlier += 1
         else:
             counts[year] = counts.get(year, 0) + 1
-    bars = ([{"label": f"{start} 年以前", "short": "更早", "value": earlier, "year": None}] if earlier else [])
-    bars += [{"label": f"{year} 年", "short": str(year), "value": counts.get(year, 0), "year": year}
+    bars = ([{"label": t("dashboard:years.before", year=start), "short": t("更早"), "value": earlier, "year": None}] if earlier else [])
+    bars += [{"label": t("dashboard:years.year", year=year), "short": str(year), "value": counts.get(year, 0), "year": year}
              for year in range(start, last + 1)]
     peak = max(bars, key=lambda bar: bar["value"])
     return {"bars": bars, "max": peak["value"], "peak": peak, "total": len(years)}
@@ -1671,11 +1418,11 @@ def _dashboard_stats() -> dict:
         return round(100.0 * value / total, 1) if total else 0.0
 
     pipeline = [
-        {"label": "已追踪", "hint": "Zotero 中被追踪的文献", "value": total},
-        {"label": "有 PDF", "hint": "本地或 Zotero 中已有 PDF", "value": has_pdf},
-        {"label": "全文 Markdown", "hint": "PDF 已转换为可检索的全文", "value": has_md},
-        {"label": "AI 快速总结", "hint": "已生成 quick summary", "value": has_summary},
-        {"label": "已入向量库", "hint": "原文已切块并写入 RAG 向量库", "value": embedded},
+        {"label": t("已追踪"), "hint": t("Zotero 中被追踪的文献"), "value": total},
+        {"label": t("有 PDF"), "hint": t("本地或 Zotero 中已有 PDF"), "value": has_pdf},
+        {"label": t("全文 Markdown"), "hint": t("PDF 已转换为可检索的全文"), "value": has_md},
+        {"label": t("AI 快速总结"), "hint": t("已生成 quick summary"), "value": has_summary},
+        {"label": t("已入向量库"), "hint": t("原文已切块并写入 RAG 向量库"), "value": embedded},
     ]
     for step in pipeline:
         step["pct"] = _pct(step["value"])
@@ -1695,16 +1442,16 @@ def _dashboard_stats() -> dict:
         return {"label": label, "value": value, "severity": severity_if_any if value else "good", "hint": hint, "url": url}
 
     pending = [
-        _item("PDF 待获取", pdf_waiting, "warning", "已加入 PDF 需求集合，等待在 Zotero 中补充 PDF",
+        _item(t("PDF 待获取"), pdf_waiting, "warning", t("已加入 PDF 需求集合，等待在 Zotero 中补充 PDF"),
               url_for("pdfstatus.index_view")),
-        _item("MinerU 失败任务", mineru_failed, "critical", "PDF→Markdown 转换失败，可在 MinerU 任务中重试",
+        _item(t("MinerU 失败任务"), mineru_failed, "critical", t("PDF→Markdown 转换失败，可在 MinerU 任务中重试"),
               url_for("mineru_tasks.index_view")),
-        _item("笔记待同步", notes_unsynced, "warning", "本地生成的笔记尚未写回 Zotero"),
-        _item("全文转换中", md_converting + mineru_active, "info", "PDF→Markdown 转换任务进行中",
+        _item(t("笔记待同步"), notes_unsynced, "warning", t("本地生成的笔记尚未写回 Zotero")),
+        _item(t("全文转换中"), md_converting + mineru_active, "info", t("PDF→Markdown 转换任务进行中"),
               url_for("mineru_tasks.index_view")),
-        _item("等待生成 AI 总结", summary_waiting, "info", "全文就绪后约 10 天自动生成 quick summary"),
-        _item("向量库待入库", embedding_backlog, "info", "等待切块、筛选并写入向量库"),
-        _item("写入队列", queue_pending, "info", "网页端提交、等待后台执行的写操作"),
+        _item(t("等待生成 AI 总结"), summary_waiting, "info", t("全文就绪后约 10 天自动生成 quick summary")),
+        _item(t("向量库待入库"), embedding_backlog, "info", t("等待切块、筛选并写入向量库")),
+        _item(t("写入队列"), queue_pending, "info", t("网页端提交、等待后台执行的写操作")),
     ]
     attention = sum(1 for item in pending if item["severity"] in {"warning", "critical"})
 
@@ -1741,9 +1488,9 @@ def _dashboard_stats() -> dict:
             "url": url_for("paper.details_view", id=paper.id),
             "steps": [
                 ("PDF", bool(pdf and (pdf.has_pdf_locally or pdf.has_pdf_in_zotero))),
-                ("全文", bool(md and md.has_md_locally)),
-                ("总结", bool(paper.quick_summary)),
-                ("向量库", paper.id in embedded_ids),
+                (t("全文"), bool(md and md.has_md_locally)),
+                (t("总结"), bool(paper.quick_summary)),
+                (t("向量库"), paper.id in embedded_ids),
             ],
         })
 
@@ -1783,6 +1530,8 @@ _FEED_STATUS_LABELS = {"new": "待评分", "scored": "已评分", "ingested": "�
 def _safe_run(fn) -> None:
     try:
         fn()
+    except KeyboardInterrupt:   # 关机时在安全点停下
+        print("[paper_feed] run stopped for shutdown")
     except Exception as exc:  # pragma: no cover
         print(f"[paper_feed] run failed: {exc}")
 
@@ -1797,8 +1546,8 @@ def _feed_item_payload(item, detail: bool = False) -> dict:
         "journal": item.journal, "published": item.published.strftime("%Y-%m-%d") if item.published else "",
         "authors": authors[:6], "author_count": len(authors), "feed": item.feed.name, "feed_id": item.feed_id,
         "score": None if item.score is None else round(item.score * 100),
-        "band": item.band, "band_label": _FEED_BAND_LABELS.get(item.band or "", ""),
-        "status": item.status, "status_label": _FEED_STATUS_LABELS.get(item.status, item.status),
+        "band": item.band, "band_label": t(_FEED_BAND_LABELS.get(item.band or "", "")),
+        "status": item.status, "status_label": t(_FEED_STATUS_LABELS.get(item.status, item.status)),
         "facet": item.facet_name, "llm_score": item.llm_score, "reason": item.llm_reason or "",
         "has_abstract": bool(item.abstract), "abstract_source": item.abstract_source,
         "feedback": item.feedback, "exploration": bool(item.exploration), "unread": item.read_at is None,
@@ -1831,7 +1580,8 @@ def _cite_label(item) -> str:
         name = authors[0].strip()
         surname = name.split(",")[0].strip() if "," in name else name.split()[-1]
     year = item.published.year if item.published else (item.created_at.year if item.created_at else "")
-    return f"{surname or (item.title or '')[:12]}{' 等' if len(authors) > 1 else ''} {year}".strip()
+    name = surname or (item.title or "")[:12]
+    return (t("feed:cite.et_al", name=name, year=year) if len(authors) > 1 else f"{name} {year}").strip()
 
 
 def _report_overview_html(overview: str) -> str:
@@ -1847,7 +1597,7 @@ def _report_overview_html(overview: str) -> str:
     def _chip(match: re.Match) -> str:
         item = items.get(int(match.group(1)))
         if item is None:   # 条目已被清理
-            return '<span class="fh-cite gone" title="这篇文章已超过保留期被清理">已清理</span>'
+            return '<span class="fh-cite gone" title="' + t("这篇文章已超过保留期被清理") + '">' + t("已清理") + '</span>'
         return (f'<a href="#" class="fh-cite" data-open="{item.id}" title="{escape(item.title)}">'
                 f'{escape(_cite_label(item))}</a>')
 
@@ -1931,7 +1681,8 @@ def _feed_items(args) -> dict:
     page = max(1, int(args.get("page") or 1))
     total = query.count()
     rows = list(query.order_by(order, Item.id.desc()).paginate(page, 50))
-    return {"items": [_feed_item_payload(i) for i in rows], "total": total, "page": page}
+    return {"items": [_feed_item_payload(i) for i in rows], "total": total, "page": page,
+            "unread_low": paper_feed.count_unread_low(int(args["feed_id"]) if args.get("feed_id") else None)}
 
 
 def _paper_titles(pids: set[int]) -> dict[int, str]:
@@ -1979,8 +1730,15 @@ def _feed_profile_payload() -> dict:
     wanted = {p for g in data["groups"] for p in g.get("representative", [])}
     wanted |= {p for g in data["groups"] for c in g["claims"] for p in (c.get("resurfaced") or {}).get("support", [])}
     titles = _paper_titles(wanted)
-    names = {g["id"]: g.get("name") or f"分组 {g['id'].split(':')[-1]}" for g in data["groups"]}
-    suggestions = [{**{k: v for k, v in s.items() if k != "parts"}, "names": [names.get(g, g) for g in s["groups"]],
+    names = {g["id"]: g.get("name") or t("profile:group.unnamed_short", n=g['id'].split(':')[-1]) for g in data["groups"]}
+    def _reason(sug: dict) -> str:
+        # 原因在显示时按当前界面语言生成（旧数据里存的是生成时的中文句子，只有它时就原样显示）
+        if "score" in sug:
+            key = "profile:suggest.merge_reason" if sug["type"] == "merge" else "profile:suggest.split_reason"
+            return t(key, score=f"{sug['score']:.2f}", overall=f"{sug['overall']:.2f}")
+        return sug.get("reason", "")
+
+    suggestions = [{**{k: v for k, v in s.items() if k != "parts"}, "reason": _reason(s), "names": [names.get(g, g) for g in s["groups"]],
                     "sizes": [len(part) for part in s.get("parts", [])]} for s in data.get("suggestions", [])]
     return {"facets": [_facet_group_payload(g, settings_map, titles) for g in data["groups"]],
             "grouped_at": (data.get("grouped_at") or "")[:16].replace("T", " "),
@@ -2049,7 +1807,7 @@ def create_storage_admin_app() -> Flask:
             store, render_turn = _agent_views()[tab]
             session_id = lit_search.safe_session_id(request.args.get("session_id"))
             if session_id is None:
-                return jsonify({"ok": False, "error": "session_id 无效。"}), 400
+                return jsonify({"ok": False, "error": t("session_id 无效。")}), 400
             return jsonify(_agent_state_payload(store, session_id, render_turn))
 
         app.add_url_rule(f"{url_prefix}/send", f"{tab}_api_send", _send, methods=["POST"])
@@ -2078,12 +1836,12 @@ def create_storage_admin_app() -> Flask:
         payload = request.get_json(silent=True) or {}
         names = [str(n) for n in payload.get("collections") or [] if str(n).strip()]
         if not names:
-            return jsonify({"ok": False, "error": "请至少选择一个 Collection。"}), 400
+            return jsonify({"ok": False, "error": t("请至少选择一个 Collection。")}), 400
         backend = _review_store().backend
         try:
             keys = list(dict.fromkeys(k for name in names for k in backend.collection_keys(name)))
         except Exception as exc:
-            return jsonify({"ok": False, "error": f"读取 Zotero Collection 失败：{exc}"}), 502
+            return jsonify({"ok": False, "error": t("review:error.read_collection", error=exc)}), 502
         found = backend.papers_by_keys(keys)
         usable = sum(1 for meta in found.values() if meta["md_path"])
         return jsonify({"ok": True, "items": len(keys), "usable": usable,
@@ -2095,7 +1853,7 @@ def create_storage_admin_app() -> Flask:
         names = [str(n).strip() for n in payload.get("collections") or [] if str(n).strip()]
         topic = str(payload.get("topic") or "").strip()
         if not names or not topic:
-            return jsonify({"ok": False, "error": "请选择 Collection 并填写综述主题。"}), 400
+            return jsonify({"ok": False, "error": t("请选择 Collection 并填写综述主题。")}), 400
         store = _review_store()
         project_id = store.create(name=str(payload.get("name") or ""), collections=names, topic=topic,
                                   use_pro=_as_bool(payload.get("use_pro")))
@@ -2111,13 +1869,13 @@ def create_storage_admin_app() -> Flask:
         try:
             return jsonify(_review_state_payload(project_id))
         except FileNotFoundError:
-            return jsonify({"ok": False, "error": "项目不存在。"}), 404
+            return jsonify({"ok": False, "error": t("项目不存在。")}), 404
 
     @app.post("/admin-api/review/resume")
     def review_api_resume() -> Any:
         project_id = _review_id((request.get_json(silent=True) or {}).get("project_id"))
         if project_id is None:
-            return jsonify({"ok": False, "error": "project_id 无效。"}), 400
+            return jsonify({"ok": False, "error": t("project_id 无效。")}), 400
         try:
             _review_store().start(project_id)
         except RuntimeError as exc:
@@ -2128,7 +1886,7 @@ def create_storage_admin_app() -> Flask:
     def review_api_cancel() -> Any:
         project_id = _review_id((request.get_json(silent=True) or {}).get("project_id"))
         if project_id is None:
-            return jsonify({"ok": False, "error": "project_id 无效。"}), 400
+            return jsonify({"ok": False, "error": t("project_id 无效。")}), 400
         _review_store().cancel(project_id)
         return jsonify(_review_state_payload(project_id))
 
@@ -2138,7 +1896,7 @@ def create_storage_admin_app() -> Flask:
         path = str(request.args.get("path") or "")
         text = _review_store().read_document(project_id, path) if project_id else None
         if text is None:
-            return jsonify({"ok": False, "error": "文档不存在或尚未生成。"}), 404
+            return jsonify({"ok": False, "error": t("文档不存在或尚未生成。")}), 404
         if request.args.get("download") == "1":
             from urllib.parse import quote
 
@@ -2211,7 +1969,7 @@ def create_storage_admin_app() -> Flask:
         from . import paper_feed
 
         if paper_feed.status().get("running"):
-            return _feed_error(RuntimeError("正在抓取中"), 409)
+            return _feed_error(RuntimeError(t("正在抓取中")), 409)
         threading.Thread(target=lambda: _safe_run(paper_feed.run_once), name="paper-feed-run", daemon=True).start()
         time.sleep(0.2)
         return jsonify({"ok": True, **_feed_overview()})
@@ -2227,9 +1985,17 @@ def create_storage_admin_app() -> Flask:
         paper_feed.init_db()
         item = paper_feed.Item.get_or_none(paper_feed.Item.id == int(request.args.get("id") or 0))
         if item is None:
-            return _feed_error(LookupError("条目不存在（可能已被自动清理）"), 404)
+            return _feed_error(LookupError(t("条目不存在（可能已被自动清理）")), 404)
         paper_feed.mark_read(item.id)
         return jsonify({"ok": True, "item": _feed_item_payload(item, detail=True)})
+
+    @app.post("/admin-api/feed/read-low")
+    def feed_api_read_low() -> Any:
+        from . import paper_feed
+
+        body = _json_body()
+        count = paper_feed.mark_low_read(int(body["feed_id"]) if body.get("feed_id") else None)
+        return jsonify({"ok": True, "marked": count})
 
     @app.post("/admin-api/feed/feedback")
     def feed_api_feedback() -> Any:
@@ -2245,7 +2011,7 @@ def create_storage_admin_app() -> Flask:
 
         item = paper_feed.confirm_ingest(int(_json_body()["id"]))
         if item.ingest_error:
-            return jsonify({"ok": False, "error": "入库失败：" + item.ingest_error, "item": _feed_item_payload(item)}), 502
+            return jsonify({"ok": False, "error": t("feed:error.ingest_failed", error=item.ingest_error), "item": _feed_item_payload(item)}), 502
         return jsonify({"ok": True, "item": _feed_item_payload(item)})
 
     @app.get("/admin-api/feed/reports")
@@ -2265,7 +2031,7 @@ def create_storage_admin_app() -> Flask:
         paper_feed.init_db()
         report = paper_feed.Report.get_or_none(paper_feed.Report.week == str(request.args.get("week") or ""))
         if report is None:
-            return _feed_error(LookupError("周报不存在"), 404)
+            return _feed_error(LookupError(t("周报不存在")), 404)
         return jsonify({"ok": True, "report": _feed_report_payload(report)})
 
     @app.post("/admin-api/feed/report/read")
@@ -2334,7 +2100,7 @@ def create_storage_admin_app() -> Flask:
             elif op == "dismiss":
                 store.dismiss_suggestion(str(body["key"]))
             else:
-                raise ValueError(f"未知操作：{op}")
+                raise ValueError(t("common:error.unknown_op", op=op))
         except (ValueError, KeyError) as exc:
             return jsonify({"ok": False, "error": str(exc)}), 400
         paper_feed.invalidate_model()
@@ -2400,15 +2166,15 @@ def create_storage_admin_app() -> Flask:
         name="Pageboygent",
         # Flask-Admin 2.x：基础模板通过主题指定；所有页面（含数据表的增删改查页）都套用 pb_master.html
         theme=Bootstrap4Theme(base_template="admin/pb_master.html"),
-        index_view=HomeView(url="/admin", endpoint="admin", name="主页"),
+        index_view=HomeView(url="/admin", endpoint="admin", name="深度搜索"),
     )
 
     # 顶部导航：三个 AI 页面 + 数据库（看板）
     top_views = [
+        TrackingView(name="文献追踪", endpoint="tracking", url="/admin/tracking"),
         ChatPageView(name="AI 对话", endpoint="chat", url="/admin/chat"),
         LitSearchPageView(name="AI 文献检索", endpoint="litsearch", url="/admin/litsearch"),
         ReviewPageView(name="AI 综述", endpoint="review", url="/admin/review"),
-        RagPageView(name="RAG 搜索", endpoint="rag", url="/admin/rag"),
         DatabaseDashboardView(name="数据库", endpoint="database", url="/admin/database"),
     ]
     for view in top_views:
@@ -2433,21 +2199,26 @@ def create_storage_admin_app() -> Flask:
         admin.add_view(view)
 
     def pb_top_nav(admin_view: Any) -> list[dict]:
-        # 主页不放进导航栏：点左上角的 “Pageboygent” 进入（pb_home_url）
+        # 顺序：文献追踪、AI 对话、AI 文献检索、AI 综述、数据库。主页（深度搜索）不进导航：点左上角 “Pageboygent” 进入
         section = getattr(admin_view, "pb_section", "")
         return [{"label": view.name, "url": url_for(f"{view.endpoint}.index"),
                  "active": admin_view is view or (view is dashboard_view and section == "database")}
                 for view in top_views]
 
     def pb_db_nav(admin_view: Any) -> list[dict]:
-        items = [{"label": "看板", "url": dashboard_view.pb_index_url(), "active": admin_view is dashboard_view,
+        items = [{"label": t("看板"), "url": dashboard_view.pb_index_url(), "active": admin_view is dashboard_view,
                   "count": None}]
         for view in db_views:
             items.append({"label": view.name, "url": view.pb_index_url(), "active": admin_view is view,
                           "count": _count(view.model.select())})
         return items
 
+    from . import i18n
+
     app.jinja_env.globals.update(
+        _=lambda text, **params: i18n.t(text, **params),
+        pb_lang=i18n.ui_language,
+        pb_i18n=i18n.js_catalog,
         pb_top_nav=pb_top_nav,
         pb_db_nav=pb_db_nav,
         pb_home_url=lambda: url_for("admin.index"),
@@ -2456,6 +2227,70 @@ def create_storage_admin_app() -> Flask:
     @app.get("/")
     def index_redirect():
         return redirect(url_for("admin.index"))
+
+    @app.get("/admin/rag/")
+    @app.get("/admin/rag")
+    def rag_page_moved():
+        """旧的 “RAG 搜索” 入口：跳到深度搜索（带上原来的查询）。"""
+        query = (request.args.get("q") or "").strip()
+        return redirect(url_for("admin.index", q=query) if query else url_for("admin.index"))
+
+    @app.get("/admin/search/")
+    @app.get("/admin/search")
+    def search_page_moved():
+        """深度搜索成了主页：旧地址带着原来的参数跳过去。"""
+        return redirect(url_for("admin.index", **request.args))
+
+    @app.get("/admin-api/search")
+    def deep_search_api() -> Any:
+        from . import deep_search
+
+        query = (request.args.get("q") or "").strip()
+        if not query:
+            return jsonify({"ok": False, "error": t("请输入要搜索的内容")}), 400
+        try:
+            page = int(request.args.get("page") or 1)
+        except ValueError:
+            page = 1
+        result = deep_search.search(query, scope=request.args.get("scope") or "all",
+                                    sort=request.args.get("sort") or "relevance", page=page)
+        return jsonify({"ok": True, **result})
+
+    @app.post("/admin-api/search/web/ingest")
+    def deep_search_web_ingest_api() -> Any:
+        """把全网搜索的一条结果加入 Zotero（web_search_collection），并纳入 Pageboygent 追踪。已在库中的不重复添加。"""
+        from . import paper_feed
+
+        record = (_json_body().get("record") or {})
+        if not str(record.get("title") or "").strip():
+            return jsonify({"ok": False, "error": t("search:web.error.no_title")}), 400
+        backend = paper_feed.backend
+        existing = paper_feed.library_match(backend.library_doi_map(), record.get("doi"), record.get("title"))
+        if existing:
+            return jsonify({"ok": True, "already": True, "pid": existing})
+        root = get_config("web_search_collection") or "WEB_SEARCH"
+        try:
+            collection = backend.zotero_collection(root)
+            key = backend.zotero_add_item(collection, {
+                "title": record["title"], "authors": record.get("authors") or [], "doi": record.get("doi"),
+                "link": record.get("url"), "abstract": record.get("abstract"), "journal": record.get("journal"),
+                "published": str(record.get("year") or "")})
+            backend.track_in_pageboygent(key, root)
+        except Exception as exc:  # noqa: BLE001
+            return jsonify({"ok": False, "error": t("search:web.error.ingest", error=exc)}), 502
+        return jsonify({"ok": True, "key": key, "zotero_url": f"zotero://select/library/items/{key}"})
+
+    @app.get("/admin-api/search/suggest")
+    def deep_search_suggest_api() -> Any:
+        from . import deep_search
+
+        return jsonify({"ok": True, "items": deep_search.suggest(request.args.get("q") or "")})
+
+    @app.get("/admin-api/search/stats")
+    def deep_search_stats_api() -> Any:
+        from . import deep_search
+
+        return jsonify({"ok": True, **deep_search.stats()})
 
     return app
 
@@ -2563,8 +2398,9 @@ def serve_storage(
     print(f"Serving storage admin at {admin_url}")
 
     def _on_shutdown(signum: int, frame: object) -> None:
-        print(f"\n收到信号 {signum}，通知 embedding 任务保存状态后退出...")
+        print(f"\n收到信号 {signum}，通知后台任务（向量化、总结、主题总结、文献追踪……）保存进度后退出...")
         rag.request_shutdown()       # 在 embedding 循环中注入 KeyboardInterrupt
+        write_queue.request_shutdown()   # 其余后台长循环在下一个安全点停下
         heartbeat_stop_event.set()   # 阻止心跳线程启动新任务
         write_queue.wake()           # 唤醒正在等待写队列的心跳线程
         raise SystemExit(0)
@@ -2578,10 +2414,11 @@ def serve_storage(
         app.run(host=target.host, port=target.port)
     finally:
         rag.request_shutdown()
+        write_queue.request_shutdown()
         heartbeat_stop_event.set()
         write_queue.wake()
         _stop_mineru_worker(mineru_worker)
-        print("等待 embedding 任务保存状态，最多等待60秒...")
+        print("等待后台任务保存进度，最多等待60秒...")
         heartbeat_thread.join(timeout=60)
         if heartbeat_thread.is_alive():
             print("警告：heartbeat 线程在超时时间内未完全退出。")

@@ -28,9 +28,9 @@ from typing import Any
 
 from openai import OpenAI
 
-from .config import get_config
-from .knowledge_graph import KnowledgeGraph, extract_knowledge_from_text
-from .mail import send as mail_send, check as mail_check
+from Pageboygent.config import get_config
+from experimental.knowledge_graph import KnowledgeGraph, extract_knowledge_from_text
+from experimental.mail import send as mail_send, check as mail_check
 
 
 # ===== Config =====

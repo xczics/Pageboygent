@@ -153,6 +153,10 @@ def search(query: str, *, mode: str = "bm25", kinds: list[str] | None = None, li
     kinds = [k for k in (kinds or KINDS) if k in KINDS] or list(KINDS)
     restrict = Or([Term("kind", k) for k in kinds]) if len(kinds) < len(KINDS) else None
     with ix.searcher() as searcher:
+        try:
+            hits = searcher.search(parsed, limit=limit, filter=restrict)
+        except ZeroDivisionError:   # Whoosh：覆盖度加权的 OR 遇到“单个短语 + NOT”会除以零，换成普通 OR
+            hits = searcher.search(QueryParser("content", ix.schema, group=OrGroup).parse(query), limit=limit,
+                                   filter=restrict)
         return [{"paper_id": hit["paper_id"], "key": hit["key"], "kind": hit["kind"], "label": hit["label"],
-                 "content": hit["content"], "score": float(hit.score)}
-                for hit in searcher.search(parsed, limit=limit, filter=restrict)]
+                 "content": hit["content"], "score": float(hit.score)} for hit in hits]

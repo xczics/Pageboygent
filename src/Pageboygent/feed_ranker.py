@@ -19,6 +19,9 @@ AI 自动入库但用户未表态的文章不算正例，避免模型自我强�
 """
 from __future__ import annotations
 
+from .i18n import answer_language_name
+from .config import research_field
+
 import hashlib
 import json
 import math
@@ -397,16 +400,16 @@ def assign_band(score: float, *, info: str, llm_score: float | None, features: d
 # ---------------------------------------------------------------------------
 
 JUDGE_SYSTEM = """
-你是一位地球化学、地球物理、宇宙化学与行星科学方向研究者的文献助理，负责判断新发表的文章对他是否值得一读。
+你是一位〔研究领域〕方向研究者的文献助理，负责判断新发表的文章对他是否值得一读。
 下面是他的研究画像（由他的文献库自动生成，并经他本人修改）：
 
 {profile}
 
-对每篇文章给出 0-10 分（10 = 必读，7-9 = 很可能想读，4-6 = 擦边，0-3 = 无关），并用一句中文说明理由。
+对每篇文章给出 0-10 分（10 = 必读，7-9 = 很可能想读，4-6 = 擦边，0-3 = 无关），并用一句〔回答语言〕说明理由。
 理由要具体：说明它与哪个兴趣方向、哪篇库内文献相关，或为什么无关。只依据给出的标题、摘要、作者判断，不要编造文章内容。
 如果文章属于画像中"不感兴趣"的方向，分数不超过 3。
 只输出 JSON：{{"items": [{{"id": "F12", "score": 8, "reason": "……"}}]}}
-""".strip()
+""".strip().replace("〔研究领域〕", research_field()).replace("〔回答语言〕", answer_language_name())
 
 
 def render_profile(model: LibraryModel, profile: dict) -> str:

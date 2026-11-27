@@ -23,8 +23,8 @@ random.seed(time.time())
 
 ZOTERO_LOCAL_APP_NAME = "Pageboygent"
 
-zt_id = get_config("zotero_id")
-zt_key = get_config("zotero_key")
+# 本地 API 里用户 ID 填 0 表示“本机这个 Zotero 库”，没配置时就用它
+zt_id = str(get_config("zotero_id") or "0")
 
 
 class ZoteroActionPaused(RuntimeError):
@@ -32,6 +32,7 @@ class ZoteroActionPaused(RuntimeError):
 
 
 _zotero_guard_log = Path(get_config("workstation_dir")).expanduser() / "zotero_guard.log"
+_zotero_guard_log.parent.mkdir(parents=True, exist_ok=True)   # 第一次运行时数据目录还不存在
 _guard_logger = logging.getLogger("Pageboygent.ZoteroGuard")
 if not _guard_logger.handlers:
     _guard_logger.setLevel(logging.INFO)
@@ -131,7 +132,8 @@ def _clear_local_api_key_cache() -> None:
         pass
 
 
-zot = Zotero(zt_id, "user", zt_key, local=True, local_api_key=_load_local_api_key())
+# 全部读写都走本机 Zotero 客户端的本地 API（不需要 zotero.org 的 Web API key）
+zot = Zotero(zt_id, "user", None, local=True, local_api_key=_load_local_api_key())
 # 兼容旧代码: 以前 zot 是远程Web API客户端(负责写), zot_local 是只读的本地API客户端(负责读),
 # 需要靠"远程写入 -> 拿到新item的key -> 再手动把文件抄一份进本地storage目录"这种别扭的方式
 # 才能让本地Zotero马上"看到"新写入的内容。现在Zotero本地API本身就能写,两者被合并成同一个

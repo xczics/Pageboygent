@@ -1,0 +1,237 @@
+{
+ "chat": {
+  "done": "完成：引用 {evidence} 条证据、{papers} 篇文献。",
+  "warn": {
+   "unsupported_mention": "回答提到了 \"{mention}\"，但本对话的检索结果中没有这篇文献，可能来自模型记忆，请谨慎核实"
+  }
+ },
+ "common": {
+  "error": {
+   "unknown_op": "未知操作：{op}"
+  },
+  "list_sep_strong": "；"
+ },
+ "dashboard": {
+  "cost": {
+   "ledger_since": "总结、精读与综述的用量自 {since} 起记录；此前的消耗未计入。",
+   "ledger_start": "用量账本启用",
+   "share_label": "{name} 花费占比",
+   "total": "按高峰时段费率预估 · 合计 ¥{cost}"
+  },
+  "generated_at": "统计于 {time}",
+  "health": {
+   "attention": "{n} 项需要处理"
+  },
+  "hero": {
+   "summary": "其中 {complete} 篇已走完全流程、可被 AI 检索 · 原文切块 {chunks} 个 · {themes} 个主题 · {collections} 个追踪集合"
+  },
+  "pipeline": {
+   "share_of": "占全部 {total} 篇的比例"
+  },
+  "sessions": {
+   "turns": "{n} 轮 · {time}"
+  },
+  "themes": {
+   "done_of": "{done} / {total} 篇",
+   "progress_label": "{name} 主题总结进度"
+  },
+  "tile": {
+   "ai_tokens": "{m}M tokens · 含会话与总结/综述",
+   "ai_unpriced": "{n} 次调用未配置费率，未计入",
+   "last_traced": "最近追踪 {time}",
+   "never_traced": "尚未手动追踪",
+   "notes_synced": "已全部同步到 Zotero",
+   "notes_unsynced": "{n} 条待同步到 Zotero",
+   "theme_progress": "{done} / {total} 篇 · {themes} 个主题"
+  },
+  "todo": {
+   "all_ok": "全部 {n} 项都正常",
+   "others_ok": "其余 {n} 项正常"
+  },
+  "years": {
+   "before": "{year} 年以前",
+   "peak": "峰值 {label}：{value} 篇 · 共 {total} 篇有年份",
+   "year": "{year} 年"
+  }
+ },
+ "db": {
+  "write_queued": "已提交写入队列：{description}（待处理 {pending} 个），将在 heartbeat 空闲时执行，稍后刷新查看结果。"
+ },
+ "feed": {
+  "cite": {
+   "et_al": "{name} 等 {year}"
+  },
+  "error": {
+   "create_collection": "无法在 Zotero 中创建 {path} 集合（请在 Zotero 中手动创建后重试）",
+   "ingest_failed": "入库失败：{error}",
+   "parse": "无法解析这个 RSS：{error}",
+   "stage": "{stage}：{error}（{where}）"
+  },
+  "progress": {
+   "llm": "LLM 判断 {done}/{total}",
+   "rescore": "重算基础分 {done}/{total}",
+   "similarity": "计算相似度 {done}/{total}"
+  }
+ },
+ "home": {
+  "list_sep": "、",
+  "settings": {
+   "missing_hint": "{names}。请先在下面的“设置”中填写并保存，然后重启服务。",
+   "go": "去设置"
+  }
+ },
+ "lit": {
+  "confidence": {
+   "high": "高",
+   "low": "低",
+   "medium": "中"
+  },
+  "done": "完成：{n} 篇候选文献。",
+  "progress": {
+   "deep_read_start": "精读子 agent 开始通读全文（约 {chars} 字符）……",
+   "folded": "上下文约 {tokens} tokens，超过软阈值 {budget}：已折叠之前各轮的 {folded} 条工具结果（证据编号不变，可用 recall_evidence 取回），估计降到约 {estimate}。",
+   "follow_up": "沿用本对话前 {turns} 轮的完整检索记录（约 {tokens} tokens，可命中前缀缓存）；之前的证据编号继续有效。",
+   "hard_limit": "上下文估计约 {estimate} tokens，接近硬上限 {limit}，已折叠 {folded} 条较早的工具结果。",
+   "self_check_failed": "自检未通过，继续检索：{issues}"
+  },
+  "tool": {
+   "abstract_and_toc": "摘要与目录",
+   "deep_read_paper": "精读全文",
+   "lookup_cited_reference": "查参考文献",
+   "mode_boolean": "布尔关键词",
+   "read_paper_notes": "阅读笔记",
+   "read_paper_passages": "回读原文",
+   "recall_evidence": "取回证据",
+   "search_fulltext_bm25": "原文 BM25",
+   "search_fulltext_keywords": "原文关键词",
+   "search_fulltext_semantic": "原文语义检索",
+   "search_summaries": "检索 AI 总结",
+   "with_mode": "{label}（{mode}）：{detail}"
+  },
+  "warn": {
+   "args_unparsable": "{name} 参数无法解析（{error}）",
+   "bad_candidate_id": "候选文献编号无法识别：{id}，已剔除",
+   "bad_evidence": "{where} 引用了无效的证据编号 {id}，已标记为 [?]",
+   "candidate_unseen": "候选文献 P{pid} 未出现在本轮任何检索结果中，已剔除（疑似编造）",
+   "evidence_missing": "P{pid} 的证据 {eid} 不存在，已剔除",
+   "evidence_not_owned": "证据 {eid} 不属于 P{pid}（或是参考文献条目），已剔除",
+   "finish_invalid": "finish 参数无效（{error}），已退回让模型重新提交。原始参数前 300 字：{raw}",
+   "no_evidence": "P{pid} 未给出有效证据，已自动附上检索命中片段并降为低相关",
+   "ref_context_invalid": "二级文献 {rid} 的引用语境 {eid} 无效，已剔除",
+   "ref_context_mismatch": "引用语境 {eid}（P{pid}）中找不到 {rid} 的第一作者与年份，已剔除",
+   "ref_doi_dropped": "二级文献 {rid} 的 DOI 与参考文献原文不符，已剔除",
+   "ref_doi_replaced": "二级文献 {rid} 的 DOI 与参考文献原文不符，已剔除，改用原文中的 DOI",
+   "ref_field_missing": "二级文献 {rid} 的 {field} 字段在参考文献原文中找不到，已剔除",
+   "ref_in_library": "二级文献 {rid} 实际已在库中（P{pid} {cite}），已标注",
+   "ref_no_context": "二级文献 {rid} 没有给出引用处的原文片段，相关性仅为模型判断",
+   "ref_not_lookup": "二级文献 {rid} 不是 lookup_cited_reference 返回的参考文献条目，已剔除（疑似编造）",
+   "unknown_paper": "{where} 提及了检索结果中不存在的文献 {id}，已标记为 [?]"
+  },
+  "where": {
+   "reason": "{id} 的理由"
+  },
+  "ref": {
+   "field": {
+    "authors": "作者"
+   }
+  }
+ },
+ "profile": {
+  "group": {
+   "unnamed_short": "分组 {n}"
+  },
+  "suggest": {
+   "merge_reason": "两组内容区分度只有 {score}（分组之间平均 {overall}）",
+   "split_reason": "组内两块之间的区分度 {score}，不低于分组之间的平均水平 {overall}"
+  }
+ },
+ "review": {
+  "collect": {
+   "detail": "{usable} 篇可用 · {excluded} 篇排除"
+  },
+  "error": {
+   "run": "出错：{error}",
+   "read_collection": "读取 Zotero Collection 失败：{error}"
+  },
+  "log": {
+   "collected": "共 {items} 个条目，{usable} 篇可用于综述，{excluded} 篇被排除。",
+   "final_mention": "最终综述提到了不在本项目文献中的 \"{mention}\"（可能是转引，请核实）",
+   "no_notes": "子课题 {label} 没有任何精读笔记，跳过综述",
+   "note_done": "精读完成：{label} · P{pid} {cite}",
+   "note_failed": "精读失败：{label} · P{pid} {cite}：{error}",
+   "notes_failed": "{n} 篇精读失败；对应子课题会基于其余笔记继续写综述，之后可点“继续”重试失败项。",
+   "notes_start": "逐篇精读：{n} 篇待读，并发 {concurrency}。",
+   "planned": "规划完成：{topics} 个子课题，共 {reads} 次精读。",
+   "planning": "规划中：把 {n} 篇文献的略读笔记交给模型拆分子课题……",
+   "read_collections": "从 Zotero 读取 Collection：{names}",
+   "sub_mention": "子课题 {label} 的综述提到了不在本项目文献中的 \"{mention}\"（可能是转引，请核实）",
+   "writing_final": "撰写最终综述：整合 {n} 篇子课题综述……",
+   "writing_sub": "撰写子课题综述：{label}（{n} 篇笔记）"
+  },
+  "plan": {
+   "detail": "{n} 个子课题"
+  },
+  "stage": {
+   "notes": "精读 · {name}",
+   "subreview": "子课题综述 · {name}"
+  },
+  "warn": {
+   "id_fixed": "子课题 {label}：编号 {raw} 无效，已按 {author} {year} 纠正为 P{pid}",
+   "no_papers": "子课题 {label} 没有有效文献，已跳过",
+   "not_candidate": "子课题 {label}：文献 {raw}（{author} {year}）不在候选集中，已剔除",
+   "truncated": "{stage}：输出达到长度上限（max_tokens={max_tokens}），内容可能被截断"
+  },
+  "excluded": {
+   "notice": "{n} 篇被排除：{list}",
+   "item": "{title}（{reason}）"
+  }
+ },
+ "search": {
+  "authors": {
+   "more": " 等",
+   "sep": "、"
+  },
+  "filter": {
+   "author": "作者：{value}",
+   "exclude": "排除：{value}",
+   "year": "年份：{value}"
+  },
+  "where": {
+   "abstract": "摘要",
+   "fulltext": "原文",
+   "fulltext_line": "原文 · 第 {line} 行"
+  },
+  "web": {
+   "error": {
+    "no_title": "这条结果没有标题，无法加入 Zotero",
+    "ingest": "加入 Zotero 失败：{error}"
+   },
+   "info": "全网约 {n} 篇（{sources}）",
+   "add": "加入 Zotero",
+   "adding": "正在加入…",
+   "added": "已加入 Zotero",
+   "in_library": "库中已有",
+   "open_zotero": "在 Zotero 中打开",
+   "cited_by": "被引 {n} 次",
+   "status": {
+    "not_configured": "{source} 未配置（在设置 → 外部文献数据库中填写）",
+    "error": "{source} 暂时不可用"
+   },
+   "external": "库外",
+   "tab_hint": "查询 OpenAlex、NASA ADS、Crossref（只有选了“全网”才会发请求）"
+  }
+ },
+ "usage": {
+  "bar": {
+   "tip": "{label}：{tokens} tokens（{share}%）"
+  },
+  "session": {
+   "summary": "{turns} {unit} · {calls} 次 LLM 调用",
+   "unpriced": "{n} {unit}使用的模型未配置费率，未计入费用"
+  },
+  "current": {
+   "indexed": "{label}（第 {n} {unit}）"
+  },
+  "input_with_cache": "输入 {input}（缓存命中 {hit} · {rate}%）"
+ }
+}

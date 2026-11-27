@@ -465,47 +465,45 @@
     {# ---------------- 概览：唯一的主数字 ---------------- #}
     <section class="pb-card pb-hero pb-row">
         <div>
-            <div class="pb-hero-label">文献库</div>
-            <div class="pb-hero-value">{{ '{:,}'.format(s.total) }}<small>篇文献</small></div>
+            <div class="pb-hero-label">{{ _('文献库') }}</div>
+            <div class="pb-hero-value">{{ '{:,}'.format(s.total) }}<small>{{ _('篇文献') }}</small></div>
             <div class="pb-hero-sub">
-                其中 <strong>{{ '{:,}'.format(s.complete) }}</strong> 篇已走完全流程、可被 AI 检索 ·
-                原文切块 <strong>{{ '{:,}'.format(s.chunks) }}</strong> 个 ·
-                {{ s.themes|length }} 个主题 · {{ s.collections }} 个追踪集合
+                {{ _('dashboard:hero.summary', complete='<strong>' ~ '{:,}'.format(s.complete) ~ '</strong>', chunks='<strong>' ~ '{:,}'.format(s.chunks) ~ '</strong>', themes=s.themes|length, collections=s.collections)|safe }}
             </div>
         </div>
         <div class="pb-hero-side">
             {% if s.attention %}
-            <span class="pb-health"><span class="pb-icon warning" aria-hidden="true">!</span>{{ s.attention }} 项需要处理</span>
+            <span class="pb-health"><span class="pb-icon warning" aria-hidden="true">!</span>{{ _('dashboard:health.attention', n=s.attention) }}</span>
             {% else %}
-            <span class="pb-health"><span class="pb-icon good" aria-hidden="true">✓</span>一切正常</span>
+            <span class="pb-health"><span class="pb-icon good" aria-hidden="true">✓</span>{{ _('一切正常') }}</span>
             {% endif %}
-            <div class="pb-generated">统计于 {{ s.generated_at }}</div>
+            <div class="pb-generated">{{ _('dashboard:generated_at', time=s.generated_at) }}</div>
         </div>
     </section>
 
     {# ---------------- 数字卡片 ---------------- #}
     <div class="pb-row tiles">
         <section class="pb-card pb-tile">
-            <div class="pb-tile-label">主题总结</div>
+            <div class="pb-tile-label">{{ _('主题总结') }}</div>
             <div class="pb-tile-value">{{ s.theme_pct }}%</div>
-            <div class="pb-tile-sub">{{ '{:,}'.format(s.theme_done) }} / {{ '{:,}'.format(s.theme_papers) }} 篇 · {{ s.themes|length }} 个主题</div>
+            <div class="pb-tile-sub">{{ _('dashboard:tile.theme_progress', done='{:,}'.format(s.theme_done), total='{:,}'.format(s.theme_papers), themes=s.themes|length) }}</div>
         </section>
         <section class="pb-card pb-tile">
-            <div class="pb-tile-label">追踪集合</div>
+            <div class="pb-tile-label">{{ _('追踪集合') }}</div>
             <div class="pb-tile-value">{{ s.collections }}</div>
-            <div class="pb-tile-sub">{% if s.last_traced %}最近追踪 {{ s.last_traced }}{% else %}尚未手动追踪{% endif %}</div>
+            <div class="pb-tile-sub">{% if s.last_traced %}{{ _('dashboard:tile.last_traced', time=s.last_traced) }}{% else %}{{ _('dashboard:tile.never_traced') }}{% endif %}</div>
         </section>
         <section class="pb-card pb-tile">
-            <div class="pb-tile-label">AI 笔记</div>
+            <div class="pb-tile-label">{{ _('AI 笔记') }}</div>
             <div class="pb-tile-value">{{ '{:,}'.format(s.notes) }}</div>
-            <div class="pb-tile-sub">{% if s.notes_unsynced %}{{ s.notes_unsynced }} 条待同步到 Zotero{% else %}已全部同步到 Zotero{% endif %}</div>
+            <div class="pb-tile-sub">{% if s.notes_unsynced %}{{ _('dashboard:tile.notes_unsynced', n=s.notes_unsynced) }}{% else %}{{ _('dashboard:tile.notes_synced') }}{% endif %}</div>
         </section>
         <section class="pb-card pb-tile">
-            <div class="pb-tile-label">AI 累计花费（预估）</div>
+            <div class="pb-tile-label">{{ _('AI 累计花费（预估）') }}</div>
             <div class="pb-tile-value">¥{{ '%.2f'|format(s.ai.cost) }}</div>
             <div class="pb-tile-sub">
-                {{ '{:,.1f}'.format(s.ai.tokens / 1000000) }}M tokens · 含会话与总结/综述
-                {% if s.ai.unpriced %}<br>{{ s.ai.unpriced }} 次调用未配置费率，未计入{% endif %}
+                {{ _('dashboard:tile.ai_tokens', m='{:,.1f}'.format(s.ai.tokens / 1000000)) }}
+                {% if s.ai.unpriced %}<br>{{ _('dashboard:tile.ai_unpriced', n=s.ai.unpriced) }}{% endif %}
             </div>
         </section>
     </div>
@@ -514,8 +512,8 @@
     <div class="pb-row two">
         <section class="pb-card">
             <div class="pb-card-title">
-                <h3>处理流水线</h3>
-                <span class="pb-card-note">占全部 {{ '{:,}'.format(s.total) }} 篇的比例</span>
+                <h3>{{ _('处理流水线') }}</h3>
+                <span class="pb-card-note">{{ _('dashboard:pipeline.share_of', total='{:,}'.format(s.total)) }}</span>
             </div>
             <div class="pb-meters">
                 {% for step in s.pipeline %}
@@ -533,8 +531,8 @@
 
         <section class="pb-card">
             <div class="pb-card-title">
-                <h3>待处理</h3>
-                <span class="pb-card-note">后台心跳会自动推进这些任务</span>
+                <h3>{{ _('待处理') }}</h3>
+                <span class="pb-card-note">{{ _('后台心跳会自动推进这些任务') }}</span>
             </div>
             {% set open_items = s.pending|rejectattr('severity', 'equalto', 'good')|list %}
             {% set ok_items = s.pending|selectattr('severity', 'equalto', 'good')|list %}
@@ -542,11 +540,11 @@
                 {% for item in open_items %}
                 <li>
                     {% if item.severity == 'critical' %}
-                    <span class="pb-icon critical" title="需要处理">✕</span>
+                    <span class="pb-icon critical" title="{{ _('需要处理') }}">✕</span>
                     {% elif item.severity == 'warning' %}
-                    <span class="pb-icon warning" title="需要关注">!</span>
+                    <span class="pb-icon warning" title="{{ _('需要关注') }}">!</span>
                     {% else %}
-                    <span class="pb-icon info" title="进行中">…</span>
+                    <span class="pb-icon info" title="{{ _('进行中') }}">…</span>
                     {% endif %}
                     <div>
                         <div class="pb-status-name">{% if item.url %}<a href="{{ item.url }}">{{ item.label }}</a>{% else %}{{ item.label }}{% endif %}</div>
@@ -557,9 +555,9 @@
                 {% endfor %}
                 {% if ok_items %}
                 <li>
-                    <span class="pb-icon good" title="正常">✓</span>
+                    <span class="pb-icon good" title="{{ _('正常') }}">✓</span>
                     <div>
-                        <div class="pb-status-name">{% if open_items %}其余 {{ ok_items|length }} 项正常{% else %}全部 {{ ok_items|length }} 项都正常{% endif %}</div>
+                        <div class="pb-status-name">{% if open_items %}{{ _('dashboard:todo.others_ok', n=ok_items|length) }}{% else %}{{ _('dashboard:todo.all_ok', n=ok_items|length) }}{% endif %}</div>
                         <div class="pb-ok-chips">
                             {% for item in ok_items %}<span class="pb-step done" title="{{ item.hint }}">✓ {{ item.label }}</span>{% endfor %}
                         </div>
@@ -575,8 +573,8 @@
     {% set h = s.years %}
     <section class="pb-card pb-row">
         <div class="pb-card-title">
-            <h3>出版年份分布</h3>
-            {% if h.bars %}<span class="pb-card-note">峰值 {{ h.peak.label }}：{{ h.peak.value }} 篇 · 共 {{ '{:,}'.format(h.total) }} 篇有年份</span>{% endif %}
+            <h3>{{ _('出版年份分布') }}</h3>
+            {% if h.bars %}<span class="pb-card-note">{{ _('dashboard:years.peak', label=h.peak.label, value=h.peak.value, total='{:,}'.format(h.total)) }}</span>{% endif %}
         </div>
         {% if h.bars %}
         {% set W = 1000 %}{% set H = 190 %}{% set top = 18 %}{% set bottom = 22 %}{% set left = 30 %}
@@ -585,7 +583,7 @@
         {% set bw = [step - 3, 2]|max %}
         {% set ymax = ((h.max / 10)|round(0, 'ceil') * 10) if h.max > 10 else 10 %}
         <div class="pb-chart" id="pb-year-chart">
-            <svg viewBox="0 0 {{ W }} {{ H }}" role="img" aria-label="各出版年份的文献数量柱状图">
+            <svg viewBox="0 0 {{ W }} {{ H }}" role="img" aria-label="{{ _('各出版年份的文献数量柱状图') }}">
                 {% for frac in [0, 0.5, 1] %}
                 {% set gy = top + plot_h * (1 - frac) %}
                 <line class="grid" x1="{{ left }}" x2="{{ W }}" y1="{{ gy }}" y2="{{ gy }}"></line>
@@ -615,14 +613,14 @@
             <div class="pb-tooltip" role="status"></div>
         </div>
         <details class="pb-table-toggle">
-            <summary>以表格查看</summary>
+            <summary>{{ _('以表格查看') }}</summary>
             <table>
-                <tr><th>年份</th><th>文献数</th></tr>
+                <tr><th>{{ _('年份') }}</th><th>{{ _('文献数') }}</th></tr>
                 {% for bar in h.bars if bar.value %}<tr><td>{{ bar.label }}</td><td>{{ bar.value }}</td></tr>{% endfor %}
             </table>
         </details>
         {% else %}
-        <div class="pb-empty">暂无带出版年份的文献。</div>
+        <div class="pb-empty">{{ _('暂无带出版年份的文献。') }}</div>
         {% endif %}
     </section>
 
@@ -630,8 +628,8 @@
     <div class="pb-row two">
         <section class="pb-card">
             <div class="pb-card-title">
-                <h3>主题总结进度</h3>
-                <span class="pb-card-note">按文献数排序</span>
+                <h3>{{ _('主题总结进度') }}</h3>
+                <span class="pb-card-note">{{ _('按文献数排序') }}</span>
             </div>
             {% if s.themes %}
             <div class="pb-meters">
@@ -639,22 +637,22 @@
                 <div>
                     <div class="pb-meter-head">
                         <span class="pb-meter-name"><a href="{{ t.url }}">{{ t.name }}</a></span>
-                        <span class="pb-meter-figure"><strong>{{ t.done }}</strong> / {{ t.papers }} 篇</span>
+                        <span class="pb-meter-figure">{{ _('dashboard:themes.done_of', done='<strong>' ~ t.done ~ '</strong>', total=t.papers)|safe }}</span>
                     </div>
                     <div class="pb-track" role="meter" aria-valuemin="0" aria-valuemax="100" aria-valuenow="{{ t.pct }}"
-                        aria-label="{{ t.name }} 主题总结进度"><div style="width: {{ t.pct }}%"></div></div>
+                        aria-label="{{ _('dashboard:themes.progress_label', name=t.name) }}"><div style="width: {{ t.pct }}%"></div></div>
                 </div>
                 {% endfor %}
             </div>
             {% else %}
-            <div class="pb-empty">还没有主题。可在“主题”页面新建。</div>
+            <div class="pb-empty">{{ _('还没有主题。可在“主题”页面新建。') }}</div>
             {% endif %}
         </section>
 
         <section class="pb-card">
             <div class="pb-card-title">
-                <h3>最近加入的文献</h3>
-                <a class="pb-card-note" href="{{ url_for('paper.index_view') }}">查看全部 →</a>
+                <h3>{{ _('最近加入的文献') }}</h3>
+                <a class="pb-card-note" href="{{ url_for('paper.index_view') }}">{{ _('查看全部 →') }}</a>
             </div>
             <ul class="pb-list">
                 {% for p in s.recent_papers %}
@@ -667,7 +665,7 @@
                     </div>
                 </li>
                 {% else %}
-                <li class="pb-empty">暂无文献。</li>
+                <li class="pb-empty">{{ _('暂无文献。') }}</li>
                 {% endfor %}
             </ul>
         </section>
@@ -677,8 +675,8 @@
     <div class="pb-row two">
         <section class="pb-card">
             <div class="pb-card-title">
-                <h3>AI 花费构成</h3>
-                <span class="pb-card-note">按高峰时段费率预估 · 合计 ¥{{ '%.2f'|format(s.ai.cost) }}</span>
+                <h3>{{ _('AI 花费构成') }}</h3>
+                <span class="pb-card-note">{{ _('dashboard:cost.total', cost='%.2f'|format(s.ai.cost)) }}</span>
             </div>
             {% if s.ai.parts %}
             <div class="pb-meters">
@@ -689,20 +687,20 @@
                         <span class="pb-meter-figure"><strong>¥{{ '%.2f'|format(part.cost) }}</strong> · {{ part.pct }}%</span>
                     </div>
                     <div class="pb-track" role="meter" aria-valuemin="0" aria-valuemax="100" aria-valuenow="{{ part.pct }}"
-                        aria-label="{{ part.label }} 花费占比"><div style="width: {{ part.pct }}%"></div></div>
+                        aria-label="{{ _('dashboard:cost.share_label', name=_(part.label)) }}"><div style="width: {{ part.pct }}%"></div></div>
                 </div>
                 {% endfor %}
             </div>
-            <div class="pb-generated">总结、精读与综述的用量自 {{ s.ai.ledger_since or '用量账本启用' }} 起记录；此前的消耗未计入。</div>
+            <div class="pb-generated">{{ _('dashboard:cost.ledger_since', since=s.ai.ledger_since or _('dashboard:cost.ledger_start')) }}</div>
             {% else %}
-            <div class="pb-empty">还没有 AI 用量记录。</div>
+            <div class="pb-empty">{{ _('还没有 AI 用量记录。') }}</div>
             {% endif %}
         </section>
 
         <section class="pb-card">
             <div class="pb-card-title">
-                <h3>最近的 AI 会话</h3>
-                <span class="pb-card-note">点击继续</span>
+                <h3>{{ _('最近的 AI 会话') }}</h3>
+                <span class="pb-card-note">{{ _('点击继续') }}</span>
             </div>
             <ul class="pb-list">
                 {% for r in s.ai.recent %}
@@ -710,11 +708,11 @@
                     <a class="pb-item-title" href="{{ r.url }}" title="{{ r.title }}">{{ r.title }}</a>
                     <div class="pb-item-meta">
                         <span class="pb-kind {{ r.kind }}">{{ r.kind_label }}</span>
-                        <span>{{ r.turns }} 轮 · {{ r.updated }}</span>
+                        <span>{{ _('dashboard:sessions.turns', n=r.turns, time=r.updated) }}</span>
                     </div>
                 </li>
                 {% else %}
-                <li class="pb-empty">还没有 AI 会话。</li>
+                <li class="pb-empty">{{ _('还没有 AI 会话。') }}</li>
                 {% endfor %}
             </ul>
         </section>
@@ -737,7 +735,7 @@
                 const box = hit.getBoundingClientRect();
                 const host = chart.getBoundingClientRect();
                 const barBox = bar && bar.getBBox && bar.getAttribute('d') ? bar.getBoundingClientRect() : box;
-                tip.textContent = hit.dataset.label + '：' + hit.dataset.value + ' 篇';
+                tip.textContent = hit.dataset.label + '：' + hit.dataset.value + tr(' 篇');
                 tip.style.left = (box.left - host.left + box.width / 2) + 'px';
                 tip.style.top = (Math.min(barBox.top, box.bottom) - host.top) + 'px';
                 tip.style.display = 'block';

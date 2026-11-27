@@ -11,7 +11,7 @@ from pathlib import Path
 import pytest
 
 # We'll test via the public API
-from Pageboygent.mail import (
+from experimental.mail import (
     BookBoyMailError,
     send,
     check,

@@ -6,7 +6,7 @@ from pathlib import Path
 
 import pytest
 
-from Pageboygent.knowledge_graph import (
+from experimental.knowledge_graph import (
     KnowledgeGraph,
     extract_knowledge_from_text,
     NODE_TYPES,

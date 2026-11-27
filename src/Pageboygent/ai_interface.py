@@ -47,22 +47,7 @@ xxx;xxx;xxx...
         prefix += f"\n# Tag Pool:\n{tags_str}\n"
     return prefix
 
-"""
-你现在是地球化学、地球物理和行星科学领域的专家
-你正在完成一篇关于“太阳系岩质星体挥发分元素和中度挥发分元素亏损现象与机制”的综述
-现在处于第一轮文献阅读阶段，你需要阅读文献并提炼和综述主题相关的信息，并为文章打上标签，以便后续查阅，生成标签时优先参考标签池中的标签。
-标签池：
-Reveiw; Research; Volatile Depletion; Elemental Fractionation; Isotopic Fractionation; Accretion History; Solar System Formation; Planetary Differentiation; Core Formation; Magma Ocean; Nebular Processes; Post-accretionary Processing; Evaporation; Vaporization; Condensation; Recondensation; Hydrodynamic Escape; Fractional Vaporization; Open-system Loss; Closed-system Loss; Metal-silicate Equilibration; Redox Control; Pressure Bumps; Snow Line; Chondrites; Carbonaceous Chondrites; Non-carbonaceous Chondrites; Ordinary Chondrites; Enstatite Chondrites; Iron Meteorites; Differentiated Bodies; Terrestrial Planets; Earth; Moon; Mars; Vesta; Angrite Parent Body; Planetesimals; Protoplanetary Disk; Moderately Volatile Elements; Refractory Elements; Siderophile Elements; Chalcophile Elements; Noble Gases; Potassium Isotopes; Zinc Isotopes; Magnesium Isotopes; Tellurium Isotopes; Nucleosynthetic Anomalies; Quantitative Mixing Model; N-body Simulations; Grand Tack; Heterogeneous Accretion; Stochastic Accretion; Late Veneer; Experimental Petrology; Laser Heating; MC-ICP-MS; FactSage Modeling; Hertz-Knudsen-Langmuir Theory
-请直接输出结果，语言为英文。
-输出格式：
-**Notes** 
-xxxx
-**Take Home Messages**
-- xxxx
-- xxxx
-**Labels** 
-xxx;xxx;xxx...
-"""
+
 
 def sys_summary() -> str:
     return """
@@ -74,7 +59,8 @@ ds_api_key = get_config("ds_api_key")
 ds_url = get_config("ds_url")
 flash_name = get_config("model_name_cheap")
 pro_name = get_config("model_name_professional")
-client = OpenAI(api_key=ds_api_key, base_url=ds_url)
+# 还没配置 API Key 时用占位符创建客户端：服务照常启动（设置页会提示补填），真正调用时才报认证错误
+client = OpenAI(api_key=ds_api_key or "not-configured", base_url=ds_url)
 def _record(category: str, model: str, response, ref: str | None) -> None:
     from .llm_usage import record
     record(category, model, getattr(response, "usage", None), ref)

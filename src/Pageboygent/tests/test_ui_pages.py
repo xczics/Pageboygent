@@ -26,17 +26,20 @@ def _sub_nav(html: str) -> list[str]:
             for active, label in re.findall(r'<a href="[^"]+" class="(active)?"[^>]*>\s*([^<\n]+)', items[0])]
 
 
+NAV = ["文献追踪", "AI 对话", "AI 文献检索", "AI 综述", "数据库"]
+
+
 @pytest.mark.parametrize("path, active", [
+    ("/admin/tracking/", "文献追踪"),
     ("/admin/chat/", "AI 对话"),
     ("/admin/litsearch/", "AI 文献检索"),
     ("/admin/review/", "AI 综述"),
-    ("/admin/rag/", "RAG 搜索"),
+    ("/admin/", None),                   # 主页（深度搜索）不在导航里
 ])
-def test_ai_pages_are_top_level(client, path, active):
+def test_top_level_pages_and_nav_order(client, path, active):
     html = client.get(path).get_data(as_text=True)
-    assert _top_nav(html) == [name + ("*" if name == active else "")
-                              for name in ["AI 对话", "AI 文献检索", "AI 综述", "RAG 搜索", "数据库"]]
-    assert _sub_nav(html) == []          # AI 页面没有数据库二级菜单
+    assert _top_nav(html) == [name + ("*" if name == active else "") for name in NAV]
+    assert _sub_nav(html) == []          # 这些页面没有数据库二级菜单
     assert "home-tabs" not in html       # 旧的页内标签栏已移除
 
 
@@ -62,13 +65,16 @@ def test_table_pages_live_under_database(client, path, active):
     assert f"{active}*" in _sub_nav(html)
 
 
-def test_home_is_paper_tracking_dashboard_reached_via_brand(client):
+def test_home_is_deep_search_and_tracking_is_first_in_nav(client):
     html = client.get("/admin/").get_data(as_text=True)
-    assert 'id="fh-root"' in html and "订阅源" not in _top_nav(html)
-    assert "主页" not in _top_nav(html)                      # 主页不进导航栏
-    assert 'class="navbar-brand pb-brand" href="/admin/"' in html  # 点 “Pageboygent” 进主页
-    location = client.get("/admin/?tab=lit&lit_session=abc").headers["Location"]
-    assert location.endswith("/admin/litsearch/?lit_session=abc")  # 旧链接仍可用
+    assert 'id="ds-root"' in html                                     # 主页 = 深度搜索
+    assert 'class="navbar-brand pb-brand" href="/admin/"' in html      # 点 “Pageboygent” 进主页
+    assert 'id="fh-root"' in client.get("/admin/tracking/").get_data(as_text=True)
+    # 旧链接仍可用
+    assert client.get("/admin/?tab=lit&lit_session=abc").headers["Location"].endswith("/admin/litsearch/?lit_session=abc")
+    assert client.get("/admin/?view=reports").headers["Location"].endswith("/admin/tracking/?view=reports")
+    assert client.get("/admin/search/?q=zinc").headers["Location"].endswith("/admin/?q=zinc")
+    assert client.get("/admin/rag/?q=zinc").headers["Location"].endswith("/admin/?q=zinc")
 
 
 def test_year_histogram_groups_early_years():

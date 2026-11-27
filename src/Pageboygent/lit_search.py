@@ -35,7 +35,8 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any, Callable
 
-from .config import get_config
+from .config import get_config, research_field
+from .i18n import t, answer_language_name
 
 
 _workstation = Path(get_config("workstation_dir")).expanduser()
@@ -45,7 +46,7 @@ _workstation = Path(get_config("workstation_dir")).expanduser()
 # ---------------------------------------------------------------------------
 
 SYSTEM_PROMPT = """
-你是 Pageboygent 的「文献检索 Agent」，服务于地球化学、地球物理、行星科学与天体物理方向的研究者。
+你是 Pageboygent 的「文献检索 Agent」，服务于〔研究领域〕方向的研究者。
 你的唯一任务：在用户本地追踪的文献库中找出与用户需求相关的文献，并给出有据可查的判断。
 你不是百科全书：库外知识一律不能作为结论或候选文献的来源。
 
@@ -123,7 +124,8 @@ SYSTEM_PROMPT = """
 - candidates：按相关度从高到低，每篇给出 paper_id、relevance（high/medium/low）、reason（一两句说明它与需求的具体关系，带 [E#]）、
   evidence_ids（1-4 个最关键的 E#，必须属于该文献，优先原文片段）。
 - confidence / gaps / search_summary：见字段说明。
-""".strip()
+默认用〔回答语言〕回答；如果用户明确用另一种语言提问，就用用户的语言（专业术语、文献标题、检索词可保留英文原文）。
+""".strip().replace("〔研究领域〕", research_field()).replace("〔回答语言〕", answer_language_name())
 
 SELF_CHECK_HEADER = "【系统自检】提交前请确认检索是否充分，发现以下问题："
 SELF_CHECK_FOOTER = (
@@ -1292,7 +1294,7 @@ def _sanitize_citations(text: str, toolbox: LitSearchToolbox, warnings: list[str
             if part[0] in "ER":
                 ev = toolbox.evidence.get(part)
                 if ev is None or (allowed_paper is not None and ev.paper_id != allowed_paper):
-                    warnings.append(f"{where} 引用了无效的证据编号 {part}，已标记为 [?]")
+                    warnings.append(t("lit:warn.bad_evidence", where=where, id=part))
                     out.append("[?]")
                     continue
                 cited.append(part)
@@ -1300,7 +1302,7 @@ def _sanitize_citations(text: str, toolbox: LitSearchToolbox, warnings: list[str
             else:
                 pid = int(part[1:])
                 if pid not in toolbox.seen_papers:
-                    warnings.append(f"{where} 提及了检索结果中不存在的文献 {part}，已标记为 [?]")
+                    warnings.append(t("lit:warn.unknown_paper", where=where, id=part))
                     out.append("[?]")
                     continue
                 out.append(f"[{part}]")
@@ -1327,13 +1329,13 @@ def _derive_short_answer(judgement: str, limit: int = 160) -> str:
 def validate_finish(args: dict, toolbox: LitSearchToolbox) -> dict:
     warnings: list[str] = []
     judgement, judgement_cites = _sanitize_citations(
-        str(args.get("overall_judgement") or ""), toolbox, warnings, "详细报告")
+        str(args.get("overall_judgement") or ""), toolbox, warnings, t("详细报告"))
     short_answer, short_cites = _sanitize_citations(
-        str(args.get("short_answer") or ""), toolbox, warnings, "简短回答")
+        str(args.get("short_answer") or ""), toolbox, warnings, t("简短回答"))
     if not short_answer.strip():
         short_answer = _derive_short_answer(judgement)
         if short_answer:
-            warnings.append("模型未给出简短回答，已截取详细报告开头代替")
+            warnings.append(t("模型未给出简短回答，已截取详细报告开头代替"))
     judgement_cites = list(dict.fromkeys(short_cites + judgement_cites))
     gaps, _ = _sanitize_citations(str(args.get("gaps") or ""), toolbox, warnings, "gaps")
 
@@ -1348,13 +1350,13 @@ def validate_finish(args: dict, toolbox: LitSearchToolbox) -> dict:
         try:
             paper_id = int(str(raw.get("paper_id")).lstrip("Pp"))
         except (TypeError, ValueError):
-            warnings.append(f"候选文献编号无法识别：{raw.get('paper_id')!r}，已剔除")
+            warnings.append(t("lit:warn.bad_candidate_id", id=repr(raw.get('paper_id'))))
             continue
         if paper_id in seen_candidate_ids:
             continue
         meta = toolbox.paper(paper_id) if paper_id in toolbox.seen_papers else None
         if meta is None:
-            warnings.append(f"候选文献 P{paper_id} 未出现在本轮任何检索结果中，已剔除（疑似编造）")
+            warnings.append(t("lit:warn.candidate_unseen", pid=paper_id))
             continue
         seen_candidate_ids.add(paper_id)
 
@@ -1362,7 +1364,7 @@ def validate_finish(args: dict, toolbox: LitSearchToolbox) -> dict:
         if relevance not in _RELEVANCE_ORDER:
             relevance = "low"
         reason, reason_cites = _sanitize_citations(str(raw.get("reason") or ""), toolbox, warnings,
-                                                   f"P{paper_id} 的理由", allowed_paper=paper_id)
+                                                   t("lit:where.reason", id=f"P{paper_id}"), allowed_paper=paper_id)
         evidence_ids: list[str] = []
         raw_ids = raw.get("evidence_ids") or []
         if isinstance(raw_ids, str):
@@ -1370,10 +1372,10 @@ def validate_finish(args: dict, toolbox: LitSearchToolbox) -> dict:
         for eid in [str(e).strip() for e in raw_ids] + reason_cites:
             ev = toolbox.evidence.get(eid)
             if ev is None:
-                warnings.append(f"P{paper_id} 的证据 {eid} 不存在，已剔除")
+                warnings.append(t("lit:warn.evidence_missing", pid=paper_id, eid=eid))
                 continue
             if ev.paper_id != paper_id or ev.kind == "reference":
-                warnings.append(f"证据 {eid} 不属于 P{paper_id}（或是参考文献条目），已剔除")
+                warnings.append(t("lit:warn.evidence_not_owned", pid=paper_id, eid=eid))
                 continue
             if eid not in evidence_ids:
                 evidence_ids.append(eid)
@@ -1385,7 +1387,7 @@ def validate_finish(args: dict, toolbox: LitSearchToolbox) -> dict:
             evidence_ids = [ev.eid for ev in own[:2]]
             auto_evidence = True
             relevance = "low"
-            warnings.append(f"P{paper_id} 未给出有效证据，已自动附上检索命中片段并降为低相关")
+            warnings.append(t("lit:warn.no_evidence", pid=paper_id))
         # 原文片段优先展示
         evidence_ids.sort(key=lambda eid: toolbox.evidence[eid].kind != "fulltext")
         candidates.append({
@@ -1452,15 +1454,14 @@ def _validate_secondary(raw_list: Any, toolbox: LitSearchToolbox, warnings: list
         rid = str(raw.get("ref_id") or "").strip()
         ref_ev = toolbox.evidence.get(rid)
         if ref_ev is None or ref_ev.kind != "reference":
-            warnings.append(f"二级文献 {rid or '(无编号)'} 不是 lookup_cited_reference 返回的参考文献条目，已剔除（疑似编造）")
+            warnings.append(t("lit:warn.ref_not_lookup", rid=rid or t("(无编号)")))
             continue
         fields, dropped = validate_reference_fields(ref_ev.text, raw)
         for name in dropped:
             if name == "doi":
-                warnings.append(f"二级文献 {rid} 的 DOI 与参考文献原文不符，已剔除"
-                                + ("，改用原文中的 DOI" if fields.get("doi") else ""))
+                warnings.append(t("lit:warn.ref_doi_replaced", rid=rid) if fields.get("doi") else t("lit:warn.ref_doi_dropped", rid=rid))
             else:
-                warnings.append(f"二级文献 {rid} 的 {name} 字段在参考文献原文中找不到，已剔除")
+                warnings.append(t("lit:warn.ref_field_missing", rid=rid, field=name))
 
         contexts: list[str] = []
         other_citing: list[int] = []
@@ -1468,19 +1469,19 @@ def _validate_secondary(raw_list: Any, toolbox: LitSearchToolbox, warnings: list
         for eid in [str(e).strip() for e in (raw.get("context_evidence_ids") or [])]:
             ev = toolbox.evidence.get(eid)
             if ev is None or ev.kind == "reference":
-                warnings.append(f"二级文献 {rid} 的引用语境 {eid} 无效，已剔除")
+                warnings.append(t("lit:warn.ref_context_invalid", rid=rid, eid=eid))
                 continue
             if ev.paper_id != ref_ev.paper_id:
                 # 其他库内文献也可能引用同一篇：片段中同时出现第一作者姓氏与年份才算数
                 folded = _fold(ev.text)
                 if not (surname and ref_year and surname in folded and ref_year in folded):
-                    warnings.append(f"引用语境 {eid}（P{ev.paper_id}）中找不到 {rid} 的第一作者与年份，已剔除")
+                    warnings.append(t("lit:warn.ref_context_mismatch", rid=rid, eid=eid, pid=ev.paper_id))
                     continue
                 if ev.paper_id not in other_citing:
                     other_citing.append(ev.paper_id)
             contexts.append(eid)
         reason, reason_cites = _sanitize_citations(str(raw.get("reason") or ""), toolbox, warnings,
-                                                   f"二级文献 {rid} 的理由")
+                                                   t("lit:where.reason", id=rid))
         for eid in reason_cites:
             ev = toolbox.evidence[eid]
             if eid not in contexts and ev.kind != "reference" and ev.paper_id == ref_ev.paper_id:
@@ -1514,9 +1515,9 @@ def _validate_secondary(raw_list: Any, toolbox: LitSearchToolbox, warnings: list
                 entry["cited_by"].append({**citing_meta, "is_candidate": citing_meta["paper_id"] in candidate_ids})
         entry["context_evidence_ids"].extend(e for e in contexts if e not in entry["context_evidence_ids"])
         if not contexts:
-            warnings.append(f"二级文献 {rid} 没有给出引用处的原文片段，相关性仅为模型判断")
+            warnings.append(t("lit:warn.ref_no_context", rid=rid))
         if library_meta is not None:
-            warnings.append(f"二级文献 {rid} 实际已在库中（P{library_meta['paper_id']} {library_meta['short_cite']}），已标注")
+            warnings.append(t("lit:warn.ref_in_library", rid=rid, pid=library_meta['paper_id'], cite=library_meta['short_cite']))
 
     refs = list(merged.values())
     for ref in refs:
@@ -1645,22 +1646,22 @@ def _extract_json_object(text: str) -> dict | None:
 EventCallback = Callable[[str, str], None]
 
 _TOOL_LABELS = {
-    "search_summaries": "检索 AI 总结",
-    "search_fulltext_bm25": "原文 BM25",
-    "search_fulltext_semantic": "原文语义检索",
-    "search_fulltext_keywords": "原文关键词",
-    "read_paper_notes": "阅读笔记",
-    "read_paper_passages": "回读原文",
-    "lookup_cited_reference": "查参考文献",
-    "recall_evidence": "取回证据",
-    "deep_read_paper": "精读全文",
+    "search_summaries": "lit:tool.search_summaries",
+    "search_fulltext_bm25": "lit:tool.search_fulltext_bm25",
+    "search_fulltext_semantic": "lit:tool.search_fulltext_semantic",
+    "search_fulltext_keywords": "lit:tool.search_fulltext_keywords",
+    "read_paper_notes": "lit:tool.read_paper_notes",
+    "read_paper_passages": "lit:tool.read_paper_passages",
+    "lookup_cited_reference": "lit:tool.lookup_cited_reference",
+    "recall_evidence": "lit:tool.recall_evidence",
+    "deep_read_paper": "lit:tool.deep_read_paper",
 }
 
 
 def describe_tool_call(name: str, args: dict) -> str:
-    label = _TOOL_LABELS.get(name, name)
+    label = t(_TOOL_LABELS[name]) if name in _TOOL_LABELS else name
     if name == "search_summaries":
-        return f"{label}（{'布尔关键词' if args.get('mode') == 'keywords' else 'BM25'}）：{args.get('query', '')}"
+        return t("lit:tool.with_mode", label=label, mode=t("lit:tool.mode_boolean") if args.get('mode') == 'keywords' else 'BM25', detail=args.get('query', ''))
     if name in {"search_fulltext_bm25", "search_fulltext_semantic"}:
         return f"{label}：{args.get('query', '')}"
     if name == "search_fulltext_keywords":
@@ -1668,7 +1669,7 @@ def describe_tool_call(name: str, args: dict) -> str:
     if name == "read_paper_notes":
         return f"{label}：P{args.get('paper_id')}"
     if name == "read_paper_passages":
-        detail = args.get("keywords") or (f"L{args['line_number']}" if args.get("line_number") else "摘要与目录")
+        detail = args.get("keywords") or (f"L{args['line_number']}" if args.get("line_number") else t("lit:tool.abstract_and_toc"))
         return f"{label}：P{args.get('paper_id')} · {detail}"
     if name == "recall_evidence":
         return f"{label}：{', '.join(map(str, args.get('ids') or []))}"
@@ -1833,7 +1834,7 @@ class LitSearchAgent:
 
     def _deep_read(self, fulltext: str, question: str) -> dict:
         """精读子 agent：独立上下文（阅读说明 + 全文 + 问题），全文放在问题前面，同一篇再问时前缀可命中缓存。"""
-        self._emit("system", f"精读子 agent 开始通读全文（约 {len(fulltext):,} 字符）……")
+        self._emit("system", t("lit:progress.deep_read_start", chars=f"{len(fulltext):,}"))
         response = self.client.chat.completions.create(
             model=self.model,
             messages=[
@@ -1942,19 +1943,18 @@ class LitSearchAgent:
             # 第一层：折叠之前各轮的工具结果（推理与结论保留，证据可按编号取回）
             folded = self._fold_tool_results(turns=set(range(1, turn_index)))
             estimate = self.estimated_context_tokens()
-            self._emit("system", f"上下文约 {self.last_prompt_tokens:,} tokens，超过软阈值 {self.context_budget:,}：已折叠之前各轮的 "
-                                 f"{folded} 条工具结果（证据编号不变，可用 recall_evidence 取回），估计降到约 {estimate:,}。")
+            self._emit("system", t("lit:progress.folded", tokens=f"{self.last_prompt_tokens:,}", budget=f"{self.context_budget:,}",
+                                   folded=folded, estimate=f"{estimate:,}"))
             if estimate > self.context_budget:
                 # 第二层：仍然太长，之前各轮只保留问题与结论摘要
-                self._emit("system", "折叠后仍超过软阈值，已把之前各轮压缩为结论摘要（证据编号不变）。")
+                self._emit("system", t("折叠后仍超过软阈值，已把之前各轮压缩为结论摘要（证据编号不变）。"))
                 self.messages = self._compacted_messages()
                 self.tool_meta = {}
             # 旧工具结果已不在上下文里，允许重新执行同样的检索
             self.toolbox.call_cache.clear()
             self._prev_main_prompt = 0  # 前缀已被改动，本轮第一次请求的未命中属于预期
         elif follow_up:
-            self._emit("system", f"沿用本对话前 {turn_index - 1} 轮的完整检索记录（约 {self.last_prompt_tokens:,} tokens，"
-                                 "可命中前缀缓存）；之前的证据编号继续有效。")
+            self._emit("system", t("lit:progress.follow_up", turns=turn_index - 1, tokens=f"{self.last_prompt_tokens:,}"))
         if not self.messages:
             self.messages = [{"role": "system", "content": self.system_prompt}]
         user_content = self._user_content(question, follow_up, history)
@@ -1972,7 +1972,7 @@ class LitSearchAgent:
             final_round = round_index >= self.max_rounds - 1
             if round_index == self.max_rounds - 1:
                 messages.append({"role": "user", "content": self.force_finish_prompt})
-                self._emit("system", "已达到最大检索轮数，要求模型提交结果。")
+                self._emit("system", t("已达到最大检索轮数，要求模型提交结果。"))
             estimate = self.estimated_context_tokens()
             if estimate > self.context_hard_limit * 0.9:
                 # 只保留最近一次模型回复对应的工具结果，其余（含本轮较早的）全部折叠
@@ -1980,8 +1980,7 @@ class LitSearchAgent:
                                      default=len(messages))
                 folded = self._fold_tool_results(before_index=last_assistant)
                 self._prev_main_prompt = 0
-                self._emit("system", f"上下文估计约 {estimate:,} tokens，接近硬上限 {self.context_hard_limit:,}，"
-                                     f"已折叠 {folded} 条较早的工具结果。")
+                self._emit("system", t("lit:progress.hard_limit", estimate=f"{estimate:,}", limit=f"{self.context_hard_limit:,}", folded=folded))
             message = self._call_llm(messages, tools)
             content = (message.content or "").strip()
             tool_calls = list(message.tool_calls or [])
@@ -2024,7 +2023,7 @@ class LitSearchAgent:
                     if args is None or not _finish_has_content(args):
                         finish_error = parse_error or "参数中没有 overall_judgement / candidates 等任何内容"
                         self.anomalies.append({"tool": name, "error": finish_error, "raw_arguments": raw_args})
-                        self._emit("warn", f"finish 参数无效（{finish_error}），已退回让模型重新提交。原始参数前 300 字：{raw_args[:300]!r}")
+                        self._emit("warn", t("lit:warn.finish_invalid", error=finish_error, raw=repr(raw_args[:300])))
                     else:
                         finish_args = args
                     continue
@@ -2033,7 +2032,7 @@ class LitSearchAgent:
                     continue
                 if args is None:
                     self.anomalies.append({"tool": name, "error": parse_error, "raw_arguments": raw_args})
-                    self._emit("warn", f"{name} 参数无法解析（{parse_error}）")
+                    self._emit("warn", t("lit:warn.args_unparsable", name=name, error=parse_error))
                     messages.append({"role": "tool", "tool_call_id": tc.id,
                                      "content": f"参数不是合法的 JSON 对象（{parse_error}），请重新调用。"})
                     continue
@@ -2059,7 +2058,7 @@ class LitSearchAgent:
                     messages.append({"role": "tool", "tool_call_id": finish_call_id, "content": "已提交。"})
                     return self._finalize(finish_args, question)
                 self_checked = True
-                self._emit("system", "自检未通过，继续检索：" + "；".join(issues))
+                self._emit("system", t("lit:progress.self_check_failed", issues="；".join(issues)))
                 messages.append({
                     "role": "tool",
                     "tool_call_id": finish_call_id,
@@ -2077,7 +2076,7 @@ class LitSearchAgent:
         self._remember_turn(question, result)
         for warning in result["warnings"]:
             self._emit("warn", warning)
-        self._emit("system", f"完成：{len(result['candidates'])} 篇候选文献。")
+        self._emit("system", t("lit:done", n=len(result['candidates'])))
         return result
 
     def _fallback(self, last_text: str, question: str = "") -> dict:
@@ -2087,19 +2086,19 @@ class LitSearchAgent:
             hits.setdefault(ev.paper_id, []).append(ev)
         ranked = sorted(hits.items(), key=lambda item: -len(item[1]))[:8]
         args = {
-            "short_answer": "模型未能提交结构化结果。以下候选按检索命中次数自动列出，未经模型判断，请自行核实。",
+            "short_answer": t("模型未能提交结构化结果。以下候选按检索命中次数自动列出，未经模型判断，请自行核实。"),
             "overall_judgement": last_text or "",
             "confidence": "low",
             "candidates": [
-                {"paper_id": pid, "relevance": "low", "reason": "按检索命中次数自动列出（未经模型确认）。",
+                {"paper_id": pid, "relevance": "low", "reason": t("按检索命中次数自动列出（未经模型确认）。"),
                  "evidence_ids": [e.eid for e in sorted(evs, key=lambda e: e.kind != "fulltext")[:2]]}
                 for pid, evs in ranked
             ],
-            "gaps": "模型未按要求提交结果，以上内容为程序自动整理。",
+            "gaps": t("模型未按要求提交结果，以上内容为程序自动整理。"),
             "search_summary": "",
         }
         result = validate_finish(args, self.toolbox)
-        result["warnings"].insert(0, "模型未调用 finish 提交结果，候选文献为程序按命中次数自动列出。")
+        result["warnings"].insert(0, t("模型未调用 finish 提交结果，候选文献为程序按命中次数自动列出。"))
         result["stats"] = self._stats()
         self._remember_turn(question, result)
         return result
@@ -2276,7 +2275,7 @@ class LitSearchSessionStore:
             # 进程重启后，未完成的轮次不会再继续
             if turn.get("status") in {"queued", "running"} and self._running.get(session_id) != turn["id"]:
                 turn["status"] = "error"
-                turn["error"] = turn.get("error") or "检索被中断（服务已重启）。"
+                turn["error"] = turn.get("error") or t("检索被中断（服务已重启）。")
         self._sessions[session_id] = session
         return session
 
@@ -2304,7 +2303,7 @@ class LitSearchSessionStore:
             with self._lock:
                 session = self._load(session_id)
                 turns = session.get("turns", [])
-                title = turns[0]["question"] if turns else "新检索"
+                title = turns[0]["question"] if turns else t("新检索")
                 previews.append({
                     "id": session_id,
                     "title": _clip(title, 28),
@@ -2316,7 +2315,7 @@ class LitSearchSessionStore:
     def start_turn(self, session_id: str, question: str, use_pro: bool = False) -> str:
         with self._lock:
             if session_id in self._running:
-                raise RuntimeError("该会话仍有检索在进行中，请等待完成。")
+                raise RuntimeError(t("该会话仍有检索在进行中，请等待完成。"))
             session = self._load(session_id)
             agent_state = self._load_agent_state(session_id)
             # 没有保存完整记录的旧会话，退回到结论摘要
@@ -2403,6 +2402,9 @@ def warmup_indexes() -> None:
             changes = ai_notes_index.sync(force=True)
             if any(changes.values()):
                 print(f"[lit_search] AI notes index synced: {changes}")
+            from . import deep_search
+
+            deep_search.warmup()   # 深度搜索：文献元数据、整篇向量、查询向量模型
         except Exception as exc:
             print(f"[lit_search] BM25 index warmup failed: {exc}")
 

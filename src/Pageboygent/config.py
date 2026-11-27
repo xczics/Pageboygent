@@ -249,8 +249,8 @@ def register_config(
     Register a new configuration item.
 
     Example:
-        register_config("zotero_key", is_secret=True)
-        register_config("mineru_url", default="http://127.0.0.1:40080")
+        register_config("zotero_id")
+        register_config("ds_api_key", is_secret=True)
     """
     return _registry.register(name, type_, default, env_name, is_secret, description)
 
@@ -296,18 +296,11 @@ def _initialize_default_configs_if_needed() -> None:
 def _initialize_default_configs() -> None:
     """Initialize default configuration items. Called once at module load."""
     register_config(
-        "zotero_key",
-        type_=str,
-        is_secret=True,
-        env_name=f"{ENV_PREFIX}ZOTERO_KEY",
-        description="Zotero API key for accessing Zotero library",
-    )
-    register_config(
         "zotero_id",
         type_=str,
         is_secret=True,
         env_name=f"{ENV_PREFIX}ZOTERO_ID",
-        description="Zotero user ID",
+        description="Zotero user ID for the local API (empty = 0, the library of the running Zotero desktop app)",
     )
     register_config(
         "zotero_local_api_key",
@@ -343,13 +336,6 @@ def _initialize_default_configs() -> None:
         is_secret=True,
         env_name=f"{ENV_PREFIX}MINERU_SECRET_KEY",
         description="OpenXLab Secret Access Key paired with mineru_access_key",
-    )
-    register_config(
-        "mineru_url",
-        type_=str,
-        default="http://127.0.0.1:40080",
-        env_name=f"{ENV_PREFIX}MINERU_URL",
-        description="MineRU service URL",
     )
     register_config(
         "ds_api_key",
@@ -546,7 +532,7 @@ def _initialize_default_configs() -> None:
     # LLM 费率（元 / 百万 tokens），用于前端预估费用。默认值为 DeepSeek-V4.1-Flash 高峰时段费率。
     for _tier, _label, _defaults in (
         ("cheap", "model_name_cheap", (0.04, 2.0, 8.0)),
-        ("professional", "model_name_professional", (None, None, None)),
+        ("professional", "model_name_professional", (0.30, 9.0, 27.0)),   # DeepSeek V4 Pro 高峰时段价
     ):
         for _kind, _desc, _default in zip(
             ("input_cache_hit", "input_cache_miss", "output"),
@@ -560,27 +546,54 @@ def _initialize_default_configs() -> None:
                 description=f"Price in CNY per 1M {_desc} for {_label}; used to estimate cost in the UI (unset = no estimate)",
             )
     register_config(
+        "openalex_api_key",
+        type_=str,
+        is_secret=True,
+        description="OpenAlex API key (free at openalex.org/settings/api); required since Feb 2026 for more than a tiny daily allowance. Used to enrich RSS items",
+    )
+    register_config(
+        "ads_api_token",
+        type_=str,
+        is_secret=True,
+        description="NASA ADS API token (free at ui.adsabs.harvard.edu → Settings → API Token); enables ADS in deep search's web scope",
+    )
+    register_config(
+        "web_search_collection",
+        type_=str,
+        default="WEB_SEARCH",
+        description="Zotero collection that papers added from deep search's web results go into",
+    )
+    register_config(
+        "ui_language",
+        type_=str,
+        default="zh",
+        description='Language of the web interface: "zh" (中文) or "en" (English); takes effect on page reload',
+    )
+    register_config(
+        "ai_language",
+        type_=str,
+        default="",
+        description='Language of AI-generated text (answers, reviews, reports, profile notes): "zh", "en", or empty to follow ui_language; takes effect after restart',
+    )
+    register_config(
+        "research_field",
+        type_=str,
+        default="地球化学、地球物理、宇宙化学与行星科学",
+        description="Your research field, written into the AI prompts (e.g. '神经科学' or 'materials chemistry')",
+    )
+    register_config(
     "storage_heartbeat_interval_seconds",
     type_=int,
     default=60,
     description="Heartbeat interval in seconds for storage service background tasks",
-    )
-    register_config(
-    "add_nothink_in_prompt",
-    type_=bool,
-    default=True,
-    description="Whether to add /nothink to the prompt for the tiny model",
-    env_name=f"{ENV_PREFIX}ADD_NOTHINK_IN_PROMPT",
     )
 
 @dataclass(frozen=True)
 class Settings:
     """Legacy Settings class for backward compatibility."""
     profile: str
-    zotero_key: str | None = None
     zotero_id: str | None = None
     mineru_token: str | None = None
-    mineru_url: str = "http://127.0.0.1:40080"
     ds_api_key: str | None = None
     ds_url: str = "https://api.deepseek.com"
 
@@ -636,10 +649,8 @@ def load_settings(
     # Build Settings from registry, applying overrides
     return Settings(
         profile=profile,
-        zotero_key=_normalize_text(get_config("zotero_key", overrides.get("zotero_key"))),
         zotero_id=_normalize_text(get_config("zotero_id", overrides.get("zotero_id"))),
         mineru_token=_normalize_text(get_config("mineru_token", overrides.get("mineru_token"))),
-        mineru_url=_normalize_text(get_config("mineru_url", overrides.get("mineru_url"))) or "http://127.0.0.1:40080",
         ds_api_key=_normalize_text(get_config("ds_api_key", overrides.get("ds_api_key"))),
         ds_url=_normalize_text(get_config("ds_url", overrides.get("ds_url"))) or "https://api.deepseek.com",
     )
@@ -777,11 +788,6 @@ def _normalize_text(value: Any) -> str | None:
     return text if text else None
 
 
-def _normalize_path_text(value: Any) -> str | None:
-    text = _normalize_text(value)
-    if not text:
-        return None
-    return str(Path(text).expanduser())
 
 
 def masked(value: str | None, visible: int = 4) -> str:
@@ -798,7 +804,7 @@ def _cli_export_config_docs() -> None:
     import sys
     dest = Path(sys.argv[1]) if len(sys.argv) > 1 else Path.cwd() / "config_table.md"
     export_config_docs(output_path=dest)
-    print(f"config_table.md written to {dest}")
+    print(f"Configuration reference written to {dest}")
 
 
 def export_config_examples(dest_dir: str | Path | None = None) -> None:
@@ -899,6 +905,7 @@ def export_config_docs(output_path: str | Path | None = None) -> str:
     for item in _registry._items.values():
         type_name = item.type_.__name__
         default   = str(item.default) if item.default is not None else "—"
+        default   = default.replace(str(Path.home()), "~")   # 文档里不写出生成者本机的用户目录
         env_name  = item.get_env_name()
         secret    = "✓" if item.is_secret else ""
         desc      = item.description.replace("|", "\\|")
@@ -914,3 +921,7 @@ def export_config_docs(output_path: str | Path | None = None) -> str:
 # Initialize default configurations when module is loaded
 _initialize_default_configs()
 
+
+def research_field() -> str:
+    """提示词里描述用户研究方向的那一句（配置项 research_field）。"""
+    return str(get_config("research_field") or "").strip() or "科学研究"

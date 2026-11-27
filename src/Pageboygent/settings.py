@@ -16,9 +16,15 @@ from pathlib import Path
 from typing import Any
 
 from . import config as cfg
+from .i18n import t
 
 # (分组, [(配置名, 中文名, 是否必填)])；未列出的已注册配置项自动归入“其他”
 GROUPS: list[tuple[str, str, list[tuple[str, str, bool]]]] = [
+    ("general", "语言与研究领域", [
+        ("ui_language", "界面语言（zh / en）", False),
+        ("ai_language", "AI 回答语言（zh / en，留空跟随界面）", False),
+        ("research_field", "你的研究领域（写进 AI 提示词）", False),
+    ]),
     ("model", "大模型 API", [
         ("ds_api_key", "DeepSeek API Key", True),
         ("ds_url", "API 地址", False),
@@ -26,8 +32,7 @@ GROUPS: list[tuple[str, str, list[tuple[str, str, bool]]]] = [
         ("model_name_professional", "Pro 模型名", False),
     ]),
     ("zotero", "Zotero", [
-        ("zotero_id", "Zotero 用户 ID", True),
-        ("zotero_key", "Zotero Web API Key", False),
+        ("zotero_id", "Zotero 用户 ID（留空 = 本机的 Zotero 库）", False),
         ("zotero_local_api_key", "Zotero 本地写入授权 Key", False),
         ("pdf_require_collection", "缺 PDF 时放入的集合", False),
         ("tag_for_ai_notes", "AI 笔记标签", False),
@@ -44,7 +49,6 @@ GROUPS: list[tuple[str, str, list[tuple[str, str, bool]]]] = [
         ("mineru_upload_accelerate", "上传加速", False),
         ("mineru_poll_interval_seconds", "轮询间隔（秒）", False),
         ("mineru_max_attempts", "最大重试次数", False),
-        ("mineru_url", "本地 MinerU 服务地址", False),
         ("mineru_output_dir", "本地 MinerU 输出目录", False),
         ("mineru_result_glob_pattern", "本地 MinerU 结果匹配", False),
     ]),
@@ -61,6 +65,11 @@ GROUPS: list[tuple[str, str, list[tuple[str, str, bool]]]] = [
         ("feed_root_collection", "Zotero 入库集合", False),
         ("feed_auto_ingest_per_run", "每次最多自动入库", False),
         ("feed_llm_batch_size", "每次 LLM 判断篇数", False),
+    ]),
+    ("external", "外部文献数据库", [
+        ("openalex_api_key", "OpenAlex API Key（免费注册；RSS 补全与全网搜索都会用）", False),
+        ("ads_api_token", "NASA ADS API Token（免费注册；全网搜索用）", False),
+        ("web_search_collection", "全网搜索结果加入的 Zotero 集合", False),
     ]),
     ("ai", "AI 检索 / 对话 / 综述", [
         ("lit_search_max_rounds", "检索最大轮数", False),
@@ -83,6 +92,26 @@ GROUPS: list[tuple[str, str, list[tuple[str, str, bool]]]] = [
         ("storage_heartbeat_interval_seconds", "后台心跳间隔（秒）", False),
     ]),
 ]
+
+# 只在某种模式下才用得到的配置项：当前模式用不到就不在设置页显示
+SHOW_WHEN: dict[str, tuple[str, str]] = {
+    "mineru_token": ("pdf2md_mode", "api"),
+    "mineru_access_key": ("pdf2md_mode", "api"),
+    "mineru_secret_key": ("pdf2md_mode", "api"),
+    "mineru_api_base": ("pdf2md_mode", "api"),
+    "mineru_model_version": ("pdf2md_mode", "api"),
+    "mineru_upload_accelerate": ("pdf2md_mode", "api"),
+    "mineru_poll_interval_seconds": ("pdf2md_mode", "api"),
+    "mineru_max_attempts": ("pdf2md_mode", "api"),
+    "mineru_output_dir": ("pdf2md_mode", "manual"),
+    "mineru_result_glob_pattern": ("pdf2md_mode", "manual"),
+}
+
+
+def _visible(name: str) -> bool:
+    rule = SHOW_WHEN.get(name)
+    return rule is None or str(cfg.get_config(rule[0]) or "").strip().lower() == rule[1]
+
 
 SOURCE_LABELS = {"env": "环境变量", "dotenv": ".env 文件", "project": "项目 pageboygent.toml",
                  "user": "用户配置文件", "default": "默认值", "unset": "未设置"}
@@ -118,11 +147,12 @@ def describe() -> dict:
         for name, label, required in entries:
             if name in items:
                 listed.add(name)
-                rows.append(_row(items[name], label, required))
-        groups.append({"id": group_id, "title": title, "items": rows})
+                if _visible(name):
+                    rows.append(_row(items[name], label, required))
+        groups.append({"id": group_id, "title": t(title), "items": rows})
     others = [_row(item, name, False) for name, item in sorted(items.items()) if name not in listed]
     if others:
-        groups.append({"id": "other", "title": "其他", "items": others})
+        groups.append({"id": "other", "title": t("其他"), "items": others})
     missing = [row for group in groups for row in group["items"] if row["required"] and not row["is_set"]]
     return {"groups": groups, "missing": missing, "user_config_path": str(cfg._get_user_config_path()),
             "profile": cfg._get_active_profile()}
@@ -133,9 +163,9 @@ def _row(item: cfg.ConfigItem, label: str, required: bool) -> dict:
     source = _source_of(item)
     is_set = cfg._is_non_empty(value)
     return {
-        "name": item.name, "label": label, "description": item.description, "type": _type_name(item),
+        "name": item.name, "label": t(label), "description": item.description, "type": _type_name(item),
         "secret": item.is_secret, "required": required, "is_set": bool(is_set), "source": source,
-        "source_label": SOURCE_LABELS[source],
+        "source_label": t(SOURCE_LABELS[source]),
         # 被用户配置文件之上的来源覆盖时，在网页上保存不会生效
         "shadowed": source in {"env", "dotenv", "project"},
         "value": (cfg.masked(str(value)) if is_set else "") if item.is_secret else ("" if value is None else value),
@@ -208,14 +238,14 @@ def save(changes: dict[str, Any], *, clear: list[str] | None = None, path: Path 
     for name, raw in changes.items():
         item = items.get(name)
         if item is None:
-            errors[name] = "未知配置项"
+            errors[name] = t("未知配置项")
             continue
         if raw is None or (isinstance(raw, str) and raw.strip() == ""):
             continue  # 留空：不修改（对密钥尤其重要）
         try:
             value = _coerce(item, raw)
         except (TypeError, ValueError):
-            errors[name] = "格式不正确"
+            errors[name] = t("格式不正确")
             continue
         # 已经写在 profile 段里的、或是密钥：写到 profile 段（与现有文件结构一致）；否则写到顶层
         if name in profile_table or item.is_secret:

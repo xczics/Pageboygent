@@ -439,3 +439,125 @@ def test_rescoring_reflects_new_negative_feedback(feed_env):
     paper_feed.rescore_pending()
     after = json.loads(paper_feed.Item.get_by_id(target.id).features)["feedback"]
     assert after < before                                          # 👎 了一篇很像的，这篇随之扣分
+
+
+
+def test_title_only_item_matches_library_by_exact_title(feed_env, monkeypatch):
+    feed = paper_feed.add_feed("Icarus", "https://example.org/rss")
+    paper_feed.fetch_feed(feed, {})
+    bird = paper_feed.Item.get(paper_feed.Item.title.contains("Bird"))
+    long_title = "Bird migration in Europe and the magnetic compass of songbirds"
+    bird.title = long_title
+    bird.save()
+    library = {f"title:{paper_feed._norm_title(long_title.upper() + '.')}": 7}   # 大小写、标点不同也算同一篇
+    monkeypatch.setattr(feed_env, "library_doi_map", lambda: library)
+    feed_env.added.clear()
+    item = paper_feed.ingest(bird.id)
+    assert item.status == "in_library" and item.in_library_pid == 7 and feed_env.added == []
+    assert paper_feed.library_match(library, None, "Short") is None       # 太短的标题不拿来查重
+
+
+def test_mark_low_read_only_touches_unread_low_items(feed_env):
+    feed = paper_feed.add_feed("Icarus", "https://example.org/rss")
+    other = paper_feed.add_feed("GCA", "https://example.org/gca")
+    low = _pending_item(feed, "Bird migration patterns in Europe", "Birds.", band="low")
+    low_other = _pending_item(other, "Bird song in Asia", "Birds.", band="low")
+    keep = _pending_item(feed, "Zinc isotope evaporation", "Zinc.", band="confirm")
+    assert paper_feed.count_unread_low(feed.id) == 1 and paper_feed.count_unread_low() == 2
+    assert paper_feed.mark_low_read(feed.id) == 1                    # 只动当前订阅源
+    assert paper_feed.Item.get_by_id(low.id).read_at is not None
+    assert paper_feed.Item.get_by_id(low_other.id).read_at is None
+    assert paper_feed.Item.get_by_id(keep.id).read_at is None        # 待确认的不动
+    assert paper_feed.Item.get_by_id(low.id).feedback is None        # 只是已读，不算 👎
+
+
+
+def test_ingested_and_in_library_items_count_as_read(feed_env, monkeypatch):
+    feed = paper_feed.add_feed("Icarus", "https://example.org/rss")
+    paper_feed.fetch_feed(feed, {"10.1016/j.icarus.2026.1": 5})            # 库里已有：抓到时就算已读
+    zinc = paper_feed.Item.get(paper_feed.Item.title.contains("Zinc"))
+    assert zinc.status == "in_library" and zinc.read_at is not None
+    bird = paper_feed.Item.get(paper_feed.Item.title.contains("Bird"))
+    assert bird.read_at is None
+    assert paper_feed.ingest(bird.id).read_at is not None                  # 入库即已读
+    old = _pending_item(feed, "Old ingested paper", "x", band="confirm")
+    paper_feed.Item.update(status="ingested").where(paper_feed.Item.id == old.id).execute()
+    assert paper_feed.mark_settled_read() == 1                             # 以前入库的也补上
+
+
+def test_ingest_during_background_rescoring_is_not_overwritten(feed_env, monkeypatch):
+    """后台重新评估已经把条目读进内存，这时你点了入库：评估写回时不能把“已入库”覆盖成“待确认”。"""
+    feed = paper_feed.add_feed("Icarus", "https://example.org/rss")
+    text = "We measured zinc isotope evaporation in lunar samples and moon basalts. " * 4
+    item = _pending_item(feed, "Zinc isotope evaporation in lunar samples", text)
+    original = paper_feed._judge
+
+    def judge_while_user_ingests(pairs, model, profile):
+        paper_feed.ingest(item.id)                   # 用户在后台评估进行中点了“入库”
+        return original(pairs, model, profile)
+
+    monkeypatch.setattr(paper_feed, "_judge", judge_while_user_ingests)
+    paper_feed.rescore_pending()
+    after = paper_feed.Item.get_by_id(item.id)
+    assert after.status == "ingested" and after.zotero_key == "ZKEY0001" and after.read_at is not None
+
+
+def test_ingest_during_scoring_is_not_overwritten(feed_env, monkeypatch):
+    feed = paper_feed.add_feed("Icarus", "https://example.org/rss")
+    paper_feed.fetch_feed(feed, {})
+    zinc = paper_feed.Item.get(paper_feed.Item.title.contains("Zinc"))
+    original = paper_feed._judge
+
+    def judge_while_user_ingests(pairs, model, profile):
+        paper_feed.ingest(zinc.id)
+        return original(pairs, model, profile)
+
+    monkeypatch.setattr(paper_feed, "_judge", judge_while_user_ingests)
+    paper_feed.score_items()
+    assert paper_feed.Item.get_by_id(zinc.id).status == "ingested"
+
+
+@pytest.fixture
+def shutdown_flag():
+    from Pageboygent import write_queue
+
+    yield write_queue
+    write_queue._shutdown_event.clear()
+
+
+def test_shutdown_stops_background_loops_at_safe_points(feed_env, shutdown_flag, monkeypatch):
+    import threading
+
+    write_queue = shutdown_flag
+    paper_feed.add_feed("A", "https://example.org/a")
+    paper_feed.add_feed("B", "https://example.org/b")
+    fetched = []
+    original = paper_feed.fetch_feed
+
+    def fetch_then_ctrl_c(feed, dois):
+        fetched.append(feed.name)
+        write_queue.request_shutdown()           # 抓第一个源的时候按了 Ctrl-C
+        return original(feed, dois)
+
+    monkeypatch.setattr(paper_feed, "fetch_feed", fetch_then_ctrl_c)
+    with pytest.raises(KeyboardInterrupt):
+        paper_feed.run_once()
+    assert fetched == ["A"]                       # 第二个源没有再抓
+    assert paper_feed._run_lock.acquire(blocking=False)   # 锁已释放，下次能正常运行
+    paper_feed._run_lock.release()
+
+    # heartbeat 线程上的 checkpoint（快速总结、主题总结等循环里都在调用）同样会停下
+    caught = []
+
+    def heartbeat_like():
+        write_queue.set_consumer_thread()
+        try:
+            write_queue.checkpoint()
+        except KeyboardInterrupt:
+            caught.append(True)
+
+    thread = threading.Thread(target=heartbeat_like)
+    thread.start()
+    thread.join()
+    assert caught == [True]
+    write_queue.checkpoint()                      # 其他线程（网页请求）上调用不受影响

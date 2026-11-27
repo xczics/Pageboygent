@@ -7,41 +7,41 @@
     <div class="lit-shell" id="lit-root" data-session-id="{{ lit_session_id }}">
         <aside class="chat-col lit-sessions-col">
             <div class="col-title-row">
-                <strong>检索会话</strong>
-                <a class="btn btn-default btn-xs" href="{{ url_for('litsearch.index', lit_new='1') }}">新建</a>
+                <strong>{{ _('检索会话') }}</strong>
+                <a class="btn btn-default btn-xs" href="{{ url_for('litsearch.index', lit_new='1') }}">{{ _('新建') }}</a>
             </div>
             <div class="session-list" id="lit-session-list"></div>
         </aside>
 
         <section class="chat-col lit-main-col">
             <div class="col-title-row">
-                <strong>AI 文献检索</strong>
-                <span class="session-hash">结论仅基于库内原文、AI 总结与检索结果；书目信息与片段由系统从数据库直接展示</span>
+                <strong>{{ _('AI 文献检索') }}</strong>
+                <span class="session-hash">{{ _('结论仅基于库内原文、AI 总结与检索结果；书目信息与片段由系统从数据库直接展示') }}</span>
             </div>
             <div id="lit-error-wrap"></div>
             <div class="dialog-log" id="lit-log">
-                <div class="empty-tip">用自然语言描述你要找的文献，例如：“库里有哪些用 Zn 同位素约束月球挥发分丢失机制的研究？各自结论是什么？”。
-                    AI 会自行组合 AI 总结检索、原文 BM25、关键词与语义检索，判断结果是否充分并扩展检索，最后给出总体判断、候选文献和关键片段。</div>
+                <div class="empty-tip">{{ _('用自然语言描述你要找的文献，例如：“库里有哪些用 Zn 同位素约束月球挥发分丢失机制的研究？各自结论是什么？”。
+                    AI 会自行组合 AI 总结检索、原文 BM25、关键词与语义检索，判断结果是否充分并扩展检索，最后给出总体判断、候选文献和关键片段。') }}</div>
             </div>
             <form class="composer" id="lit-form">
-                <textarea name="question" class="form-control" placeholder="描述你要检索的文献，可以继续追问上一轮的结果..."></textarea>
+                <textarea name="question" class="form-control" placeholder="{{ _('描述你要检索的文献，可以继续追问上一轮的结果...') }}"></textarea>
                 <div class="composer-footer">
                     <label class="checkbox-inline">
-                        <input type="checkbox" name="use_pro"> 使用 Pro 模型
+                        <input type="checkbox" name="use_pro"> {{ _('使用 Pro 模型') }}
                     </label>
-                    <span class="chat-running-tag" id="lit-running-tag" style="display:none;">AI 正在检索...</span>
-                    <button type="submit" class="btn btn-primary" id="lit-send-btn">检索</button>
+                    <span class="chat-running-tag" id="lit-running-tag" style="display:none;">{{ _('AI 正在检索...') }}</span>
+                    <button type="submit" class="btn btn-primary" id="lit-send-btn">{{ _('检索') }}</button>
                 </div>
             </form>
         </section>
 
         <aside class="chat-col lit-usage-col">
             <div class="col-title-row">
-                <strong>Token 仪表</strong>
-                <span class="session-hash">按高峰时段费率预估</span>
+                <strong>{{ _('Token 仪表') }}</strong>
+                <span class="session-hash">{{ _('按高峰时段费率预估') }}</span>
             </div>
             <div class="lit-usage-panel tok-root" id="lit-usage-panel">
-                <div class="empty-tip">开始检索后，这里会实时显示 token 消耗与预估费用。</div>
+                <div class="empty-tip">{{ _('开始检索后，这里会实时显示 token 消耗与预估费用。') }}</div>
             </div>
         </aside>
     </div>
@@ -51,41 +51,41 @@
     <div class="lit-shell" id="chat-root" data-session-id="{{ chat_session_id }}">
         <aside class="chat-col lit-sessions-col">
             <div class="col-title-row">
-                <strong>对话列表</strong>
-                <a class="btn btn-default btn-xs" href="{{ url_for('chat.index', chat_new='1') }}">新建</a>
+                <strong>{{ _('对话列表') }}</strong>
+                <a class="btn btn-default btn-xs" href="{{ url_for('chat.index', chat_new='1') }}">{{ _('新建') }}</a>
             </div>
             <div class="session-list" id="chat-session-list"></div>
         </aside>
 
         <section class="chat-col lit-main-col">
             <div class="col-title-row">
-                <strong>AI 对话</strong>
-                <span class="session-hash">涉及文献的内容会先检索文献库并引用原文；引用的文献与片段由系统从数据库直接展示</span>
+                <strong>{{ _('AI 对话') }}</strong>
+                <span class="session-hash">{{ _('涉及文献的内容会先检索文献库并引用原文；引用的文献与片段由系统从数据库直接展示') }}</span>
             </div>
             <div id="chat-error-wrap"></div>
             <div class="dialog-log" id="chat-log">
-                <div class="empty-tip">像和研究助理聊天一样提问，例如：“BSE 的 Rb 同位素组成比球粒陨石轻还是重？依据是什么？”。
-                    涉及具体研究时，AI 会自行检索文献库、回原文核实，并在回答中引用证据；寒暄、润色、翻译等则直接回答。可以连续追问。</div>
+                <div class="empty-tip">{{ _('像和研究助理聊天一样提问，例如：“BSE 的 Rb 同位素组成比球粒陨石轻还是重？依据是什么？”。
+                    涉及具体研究时，AI 会自行检索文献库、回原文核实，并在回答中引用证据；寒暄、润色、翻译等则直接回答。可以连续追问。') }}</div>
             </div>
             <form class="composer" id="chat-form">
-                <textarea name="question" class="form-control" placeholder="输入你的问题，Ctrl/⌘ + Enter 发送..."></textarea>
+                <textarea name="question" class="form-control" placeholder="{{ _('输入你的问题，Ctrl/⌘ + Enter 发送...') }}"></textarea>
                 <div class="composer-footer">
                     <label class="checkbox-inline">
-                        <input type="checkbox" name="use_pro"> 使用 Pro 模型
+                        <input type="checkbox" name="use_pro"> {{ _('使用 Pro 模型') }}
                     </label>
-                    <span class="chat-running-tag" id="chat-running-tag" style="display:none;">AI 正在思考...</span>
-                    <button type="submit" class="btn btn-primary" id="chat-send-btn">发送</button>
+                    <span class="chat-running-tag" id="chat-running-tag" style="display:none;">{{ _('AI 正在思考...') }}</span>
+                    <button type="submit" class="btn btn-primary" id="chat-send-btn">{{ _('发送') }}</button>
                 </div>
             </form>
         </section>
 
         <aside class="chat-col lit-usage-col">
             <div class="col-title-row">
-                <strong>Token 仪表</strong>
-                <span class="session-hash">按高峰时段费率预估</span>
+                <strong>{{ _('Token 仪表') }}</strong>
+                <span class="session-hash">{{ _('按高峰时段费率预估') }}</span>
             </div>
             <div class="lit-usage-panel tok-root" id="chat-usage-panel">
-                <div class="empty-tip">开始对话后，这里会实时显示 token 消耗与预估费用。</div>
+                <div class="empty-tip">{{ _('开始对话后，这里会实时显示 token 消耗与预估费用。') }}</div>
             </div>
         </aside>
     </div>
@@ -95,16 +95,16 @@
     <div class="lit-shell" id="review-root" data-project-id="{{ review_project_id }}">
         <aside class="chat-col lit-sessions-col">
             <div class="col-title-row">
-                <strong>综述项目</strong>
-                <a class="btn btn-default btn-xs" href="{{ url_for('review.index', review_new='1') }}">新建</a>
+                <strong>{{ _('综述项目') }}</strong>
+                <a class="btn btn-default btn-xs" href="{{ url_for('review.index', review_new='1') }}">{{ _('新建') }}</a>
             </div>
             <div class="session-list" id="review-project-list"></div>
         </aside>
 
         <section class="chat-col lit-main-col">
             <div class="col-title-row">
-                <strong>AI 综述</strong>
-                <span class="session-hash">规划 → 逐篇精读 → 子课题综述 → 最终综述；参考文献只用所选 Collection 内的文献，书目信息来自 Zotero</span>
+                <strong>{{ _('AI 综述') }}</strong>
+                <span class="session-hash">{{ _('规划 → 逐篇精读 → 子课题综述 → 最终综述；参考文献只用所选 Collection 内的文献，书目信息来自 Zotero') }}</span>
             </div>
             <div id="review-error-wrap"></div>
             <div class="dialog-log" id="review-main"></div>
@@ -112,63 +112,19 @@
 
         <aside class="chat-col lit-usage-col">
             <div class="col-title-row">
-                <strong>Token 仪表</strong>
-                <span class="session-hash">按高峰时段费率预估</span>
+                <strong>{{ _('Token 仪表') }}</strong>
+                <span class="session-hash">{{ _('按高峰时段费率预估') }}</span>
             </div>
             <div class="lit-usage-panel tok-root" id="review-usage-panel">
-                <div class="empty-tip">开始综述后，这里会实时显示 token 消耗与预估费用。</div>
+                <div class="empty-tip">{{ _('开始综述后，这里会实时显示 token 消耗与预估费用。') }}</div>
             </div>
         </aside>
     </div>
     <div class="rv-viewer" id="review-viewer" hidden>
         <div class="rv-viewer-card">
             <div class="rv-viewer-head"><strong id="review-viewer-title"></strong>
-                <span><a href="#" id="review-viewer-download">下载 .md</a> · <a href="#" id="review-viewer-close">关闭</a></span></div>
+                <span><a href="#" id="review-viewer-download">{{ _('下载 .md') }}</a> · <a href="#" id="review-viewer-close">{{ _('关闭') }}</a></span></div>
             <div class="rv-viewer-body snippet" id="review-viewer-body"></div>
-        </div>
-    </div>
-    {% endif %}
-
-    {% if active_tab == 'rag' %}
-    <div class="card rag-panel">
-        <div class="card-header">
-            <strong>RAG 搜索</strong>
-        </div>
-        <div class="card-body">
-            <form method="get" action="{{ url_for('rag.index') }}" class="form-inline rag-form">
-                <textarea name="q" class="form-control" placeholder="输入问题或检索关键词...">{{ query }}</textarea>
-                <input type="number" min="1" max="50" name="top_k" value="{{ top_k }}" class="form-control rag-topk">
-                <button type="submit" class="btn btn-primary">开始检索</button>
-            </form>
-            <div class="rag-hint">默认返回前 {{ top_k }} 条结果，可在上方调整。</div>
-
-            {% if error %}
-            <div class="alert alert-danger" style="margin-top: 10px;">{{ error }}</div>
-            {% endif %}
-
-            {% if searched and not results and not error %}
-            <div class="alert alert-info" style="margin-top: 10px;">未检索到结果，请尝试更具体的关键词。</div>
-            {% endif %}
-
-            {% if results %}
-            <div class="rag-result-list">
-                {% for item in results %}
-                <article class="rag-result-item">
-                    <div class="rag-meta">
-                        <span class="score-tag">score: {{ '%.4f'|format(item.score if item.score is not none else 0.0)
-                            }}</span>
-                        <span>paper_id: {{ item.paper_id }}</span>
-                        <span>md_key: {{ item.md_key }}</span>
-                        <span>line: {{ item.line_number }}</span>
-                    </div>
-                    {% if item.bib_full_info %}
-                    <div class="bib-info no-mathjax">{{ item.bib_full_info }}</div>
-                    {% endif %}
-                    <div class="snippet">{{ item.rendered_text }}</div>
-                </article>
-                {% endfor %}
-            </div>
-            {% endif %}
         </div>
     </div>
     {% endif %}
@@ -1165,14 +1121,14 @@
     function pbUsagePanel(node, labels) {
         // ---------------- Token 仪表 ----------------
         const TOK_PARTS = [
-            { key: 'input_cache_hit', cls: 'hit', color: 'var(--tok-hit)', label: '输入 · 缓存命中' },
-            { key: 'input_cache_miss', cls: 'miss', color: 'var(--tok-miss)', label: '输入 · 缓存未命中' },
-            { key: 'output', cls: 'out', color: 'var(--tok-out)', label: '输出' },
+            { key: 'input_cache_hit', cls: 'hit', color: 'var(--tok-hit)', label: tr('输入 · 缓存命中') },
+            { key: 'input_cache_miss', cls: 'miss', color: 'var(--tok-miss)', label: tr('输入 · 缓存未命中') },
+            { key: 'output', cls: 'out', color: 'var(--tok-out)', label: tr('输出') },
         ];
         const usagePanel = node;
         let tokTooltip = null;
-        const L = Object.assign({ session: '当前对话', unit: '轮', current: '当前一轮', showIndex: true,
-                                  usageEmpty: '开始后，这里会实时显示 token 消耗与预估费用。' }, labels || {});
+        const L = Object.assign({ session: tr('当前对话'), unit: tr('轮'), current: tr('当前一轮'), showIndex: true,
+                                  usageEmpty: tr('开始后，这里会实时显示 token 消耗与预估费用。') }, labels || {});
         const esc = (value) => String(value == null ? '' : value)
             .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
             .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
@@ -1198,19 +1154,19 @@
                 const cost = scope.cost ? scope.cost[p.key] : null;
                 // 块足够宽才在块内印百分比，否则只靠下方表格与悬停提示
                 const label = tall && share >= 0.16 ? Math.round(share * 100) + '%' : '';
-                const tip = p.label + '：' + fmtInt(value) + ' tokens（' + (share * 100).toFixed(1) + '%）' +
-                    (cost != null ? '<br>预估 ' + fmtYuan(cost) : '');
+                const tip = tr('usage:bar.tip', { label: p.label, tokens: fmtInt(value), share: (share * 100).toFixed(1) }) +
+                    (cost != null ? tr('<br>预估 ') + fmtYuan(cost) : '');
                 return '<div class="tok-seg ' + p.cls + '" style="flex:' + value + ' 1 0;" data-tip="' + esc(tip) + '">' + label + '</div>';
             }).join('');
-            return '<div class="tok-bar' + (tall ? '' : ' thin') + '" role="img" aria-label="token 构成">' + segs + '</div>';
+            return '<div class="tok-bar' + (tall ? '' : ' thin') + tr('" role="img" aria-label="token 构成">') + segs + '</div>';
         }
 
         function renderTokTable(scope) {
             const rows = TOK_PARTS.map((p) => '<tr><td><span class="tok-swatch" style="background:' + p.color + '"></span>' + p.label + '</td>' +
                 '<td class="num">' + fmtInt(scope.tokens[p.key]) + '</td>' +
                 '<td class="num">' + (scope.cost ? fmtYuan(scope.cost[p.key]) : '—') + '</td></tr>').join('');
-            return '<table class="tok-table"><tr><th></th><th class="num">tokens</th><th class="num">预估</th></tr>' + rows +
-                '<tr class="total"><td>合计</td><td class="num">' + fmtInt(scope.total_tokens) + '</td><td class="num">' +
+            return tr('<table class="tok-table"><tr><th></th><th class="num">tokens</th><th class="num">预估</th></tr>') + rows +
+                tr('<tr class="total"><td>合计</td><td class="num">') + fmtInt(scope.total_tokens) + '</td><td class="num">' +
                 (scope.cost ? fmtYuan(scope.cost.total) : '—') + '</td></tr></table>';
         }
 
@@ -1221,12 +1177,12 @@
             const miss = Number(scope.tokens.input_cache_miss || 0);
             const lost = Number(scope.lost_cache_tokens || 0);
             // 未命中 = 新增内容（本轮新返回的检索结果、模型输出，第一次出现，不可能命中）+ 本可命中却丢失的部分
-            const note = '<div class="tok-total-line" style="font-size:11px;margin-top:3px;" title="智能体每一步都会追加新的检索结果，这部分第一次出现、必然未命中；只有“可避免”的部分说明缓存出了问题">' +
-                '未命中中：新增内容 ' + fmtInt(Math.max(0, miss - lost)) + ' · 可避免 ' +
+            const note = tr('<div class="tok-total-line" style="font-size:11px;margin-top:3px;" title="智能体每一步都会追加新的检索结果，这部分第一次出现、必然未命中；只有“可避免”的部分说明缓存出了问题">') +
+                tr('未命中中：新增内容 ') + fmtInt(Math.max(0, miss - lost)) + tr(' · 可避免 ') +
                 (lost ? '<strong style="color:#b45309">' + fmtInt(lost) + '</strong>' : '0') + '</div>';
-            return '<div class="tok-meter-label"><span>输入缓存命中率</span><span>' + (rate * 100).toFixed(1) + '%</span></div>' +
+            return tr('<div class="tok-meter-label"><span>输入缓存命中率</span><span>') + (rate * 100).toFixed(1) + '%</span></div>' +
                 '<div class="tok-meter" role="meter" aria-valuemin="0" aria-valuemax="100" aria-valuenow="' + Math.round(rate * 100) +
-                '" aria-label="输入缓存命中率"><div style="width:' + (rate * 100).toFixed(1) + '%"></div></div>' + note;
+                tr('" aria-label="输入缓存命中率"><div style="width:') + (rate * 100).toFixed(1) + '%"></div></div>' + note;
         }
 
         function renderUsagePanel(panel) {
@@ -1241,16 +1197,16 @@
             const curCost = cur.cost ? cur.cost.total : null;
             // 唯一的 hero 数字：当前对话预估费用
             let html = '<section class="tok-scope">' +
-                '<div class="tok-scope-title"><span>' + L.session + '</span><span>' + Number(ses.turn_count || 0) + ' ' + L.unit + ' · ' + fmtInt(ses.llm_calls) + ' 次 LLM 调用</span></div>' +
+                '<div class="tok-scope-title"><span>' + L.session + '</span><span>' + tr('usage:session.summary', { turns: Number(ses.turn_count || 0), unit: L.unit, calls: fmtInt(ses.llm_calls) }) + '</span></div>' +
                 '<div class="tok-hero">' + fmtYuan(ses.cost ? ses.cost.total : null, true) + '</div>' +
                 '<div class="tok-total-line">' + fmtInt(ses.total_tokens) + ' tokens' +
-                (ses.unpriced_turns ? ' · ' + ses.unpriced_turns + ' ' + L.unit + '使用的模型未配置费率，未计入费用' : '') + '</div>' +
+                (ses.unpriced_turns ? ' · ' + tr('usage:session.unpriced', { n: ses.unpriced_turns, unit: L.unit }) : '') + '</div>' +
                 renderTokBar(ses, true) + renderTokTable(ses) + renderHitMeter(ses) + '</section>';
             html += '<section class="tok-scope">' +
-                '<div class="tok-scope-title"><span>' + (running ? '<span class="tok-running-dot"></span>' + L.current + '（进行中）' : L.current + (L.showIndex ? '（第 ' + cur.turn_index + ' ' + L.unit + '）' : '')) + '</span>' +
-                '<span>' + fmtInt(cur.llm_calls) + ' 次调用</span></div>' +
+                '<div class="tok-scope-title"><span>' + (running ? '<span class="tok-running-dot"></span>' + L.current + tr('（进行中）') : (L.showIndex ? tr('usage:current.indexed', { label: L.current, n: cur.turn_index, unit: L.unit }) : L.current)) + '</span>' +
+                '<span>' + fmtInt(cur.llm_calls) + tr(' 次调用</span></div>') +
                 '<div class="tok-scope-sub" title="' + esc(cur.question) + '">' + esc(cur.question) + '</div>' +
-                '<div class="tok-stat">' + (cur.cost ? fmtYuan(curCost, true) : '<span style="font-size:14px;font-weight:400;">该模型未配置费率</span>') + '</div>' +
+                '<div class="tok-stat">' + (cur.cost ? fmtYuan(curCost, true) : tr('<span style="font-size:14px;font-weight:400;">该模型未配置费率</span>')) + '</div>' +
                 '<div class="tok-total-line">' + fmtInt(cur.total_tokens) + ' tokens · ' + esc(cur.model || '') + '</div>' +
                 renderTokBar(cur, false) + renderTokTable(cur) + renderHitMeter(cur) + '</section>';
             usagePanel.innerHTML = html + renderRates(panel);
@@ -1258,11 +1214,11 @@
 
         function renderRates(panel) {
             const r = panel.rates;
-            const rateLine = (x) => '缓存命中 ' + x.input_cache_hit + ' · 未命中 ' + x.input_cache_miss + ' · 输出 ' + x.output;
-            return '<div class="tok-rates">费率（元 / 百万 tokens，高峰时段）：<br>' +
-                (r ? 'Flash：' + rateLine(r) : 'Flash：未配置') + '<br>' +
-                (panel.pro_rates ? 'Pro：' + rateLine(panel.pro_rates) : 'Pro：未配置（price_professional_*）') +
-                '<br>预估费用仅供参考，以账单为准。</div>';
+            const rateLine = (x) => tr('缓存命中 ') + x.input_cache_hit + tr(' · 未命中 ') + x.input_cache_miss + tr(' · 输出 ') + x.output;
+            return tr('<div class="tok-rates">费率（元 / 百万 tokens，高峰时段）：<br>') +
+                (r ? 'Flash：' + rateLine(r) : tr('Flash：未配置')) + '<br>' +
+                (panel.pro_rates ? 'Pro：' + rateLine(panel.pro_rates) : tr('Pro：未配置（price_professional_*）')) +
+                tr('<br>预估费用仅供参考，以账单为准。</div>');
         }
 
         if (usagePanel) {
@@ -1329,7 +1285,7 @@
                 const href = indexUrl + '?tab=' + cfg.tab + '&' + cfg.tab + '_session=' + encodeURIComponent(s.id);
                 return '<a class="session-item' + active + '" href="' + href + '">' +
                     '<div class="session-title">' + esc(s.title) + '</div>' +
-                    '<div class="session-meta">' + esc(s.updated_at) + ' · ' + Number(s.turn_count || 0) + ' 轮</div></a>';
+                    '<div class="session-meta">' + esc(s.updated_at) + ' · ' + Number(s.turn_count || 0) + tr(' 轮</div></a>');
             }).join('') || '<div class="empty-tip" style="padding:6px;">' + cfg.labels.noSessions + '</div>';
         }
 
@@ -1345,11 +1301,11 @@
             const hit = Number(usage.cache_hit_tokens || 0);
             const prompt = Number(usage.prompt_tokens || 0);
             const hitRate = prompt ? Math.round(hit / prompt * 100) : 0;
-            return '<div class="lit-usage" title="本轮检索的 LLM token 消耗（累计）">' +
-                '<span>🪙 总计 ' + fmtTokens(usage.total_tokens) + ' tokens</span>' +
-                '<span>输入 ' + fmtTokens(prompt) + '（缓存命中 ' + fmtTokens(hit) + ' · ' + hitRate + '%）</span>' +
-                '<span>输出 ' + fmtTokens(usage.completion_tokens) + '</span>' +
-                '<span>LLM 调用 ' + Number(usage.llm_calls) + ' 次</span></div>';
+            return tr('<div class="lit-usage" title="本轮检索的 LLM token 消耗（累计）">') +
+                tr('<span>🪙 总计 ') + fmtTokens(usage.total_tokens) + ' tokens</span>' +
+                '<span>' + tr('usage:input_with_cache', { input: fmtTokens(prompt), hit: fmtTokens(hit), rate: hitRate }) + '</span>' +
+                tr('<span>输出 ') + fmtTokens(usage.completion_tokens) + '</span>' +
+                tr('<span>LLM 调用 ') + Number(usage.llm_calls) + tr(' 次</span></div>');
         }
 
         const usagePanelView = pbUsagePanel(document.getElementById(cfg.prefix + '-usage-panel'), cfg.labels);
@@ -1375,11 +1331,11 @@
             const latest = running && steps.length ? steps[steps.length - 1] : null;
             const items = steps.map((s) => '<li class="kind-' + esc(s.kind) + '">' + (TRACE_ICONS[s.kind] || '·') + ' ' + esc(s.text) + '</li>').join('');
             return '<details class="lit-trace lit-card" data-turn="' + esc(turn.id) + '"' + open + '>' +
-                '<summary>工具链（' + toolCount + ' 次调用）' + (running ? ' · 进行中…' : '') +
+                tr('<summary>工具链（') + toolCount + tr(' 次调用）') + (running ? tr(' · 进行中…') : '') +
                 (chain ? ' <span class="lit-chain">' + chain + '</span>' : '') +
                 (latest ? '<span class="lit-latest">' + (TRACE_ICONS[latest.kind] || '·') + ' ' + esc(latest.text) + '</span>' : '') +
                 '</summary>' +
-                '<ol>' + (items || '<li>正在启动…</li>') + '</ol>' + renderUsage(turn.usage) + '</details>';
+                '<ol>' + (items || tr('<li>正在启动…</li>')) + '</ol>' + renderUsage(turn.usage) + '</details>';
         }
 
         function renderEvidence(turnId, ev, extraLabel) {
@@ -1387,7 +1343,7 @@
                 '<div class="lit-evidence-head"><span class="lit-badge lit-kind-' + esc(ev.kind) + '">' + esc(ev.kind_label) + '</span>' +
                 '<strong>' + esc(ev.eid) + '</strong> · ' + esc(ev.label) +
                 (extraLabel ? ' · ' + esc(extraLabel) : '') +
-                (ev.methods && ev.methods.length ? ' · 命中方式：' + esc(ev.methods.join(', ')) : '') +
+                (ev.methods && ev.methods.length ? tr(' · 命中方式：') + esc(ev.methods.join(', ')) : '') +
                 '</div><div class="snippet">' + (ev.text_html || '') + '</div></div>';
         }
 
@@ -1397,12 +1353,12 @@
             const zSelect = safeHref(p.zotero_select_url, ['zotero://']);
             const zPdf = safeHref(p.zotero_pdf_url, ['zotero://']);
             const doi = safeHref(p.doi_url, ['https://doi.org/']);
-            if (zSelect) { links.push('<a href="' + zSelect + '">在 Zotero 中显示</a>'); }
-            if (zPdf) { links.push('<a href="' + zPdf + '">在 Zotero 中打开 PDF</a>'); }
+            if (zSelect) { links.push('<a href="' + zSelect + tr('">在 Zotero 中显示</a>')); }
+            if (zPdf) { links.push('<a href="' + zPdf + tr('">在 Zotero 中打开 PDF</a>')); }
             if (doi) { links.push('<a href="' + doi + '" target="_blank" rel="noopener">DOI</a>'); }
             const flags = [];
-            if (cand.summary_only) { flags.push('<span class="lit-badge lit-flag" title="支撑证据只来自 AI 总结/笔记，未经原文核实">仅总结支撑</span>'); }
-            if (cand.auto_evidence) { flags.push('<span class="lit-badge lit-flag" title="模型未给出有效证据，片段由系统按检索命中自动附上">证据为自动附加</span>'); }
+            if (cand.summary_only) { flags.push(tr('<span class="lit-badge lit-flag" title="支撑证据只来自 AI 总结/笔记，未经原文核实">仅总结支撑</span>')); }
+            if (cand.auto_evidence) { flags.push(tr('<span class="lit-badge lit-flag" title="模型未给出有效证据，片段由系统按检索命中自动附上">证据为自动附加</span>')); }
             const anchor = 'lit-' + turnId + '-P' + p.paper_id;
             const title = String(p.title || '');
             const briefTitle = title.length > 60 ? title.slice(0, 60) + '…' : title;
@@ -1426,7 +1382,7 @@
             const head = items.slice(0, 2).map((ev) => renderEvidence(turnId, ev)).join('');
             const tail = items.slice(2);
             if (!tail.length) { return head; }
-            return head + rememberedDetails(anchor + '-ev', '更多片段（' + tail.length + '）',
+            return head + rememberedDetails(anchor + '-ev', tr('更多片段（') + tail.length + '）',
                 tail.map((ev) => renderEvidence(turnId, ev)).join(''), 'lit-more');
         }
 
@@ -1450,7 +1406,7 @@
             const doi = safeHref(ref.doi_url, ['https://doi.org/']);
             // 优先显示 DOI；其余字段只显示程序核实过（能在参考文献原文中找到）的部分
             if (f.doi) { rows.push(['DOI', doi ? '<a href="' + doi + '" target="_blank" rel="noopener">' + esc(f.doi) + '</a>' : esc(f.doi)]); }
-            [['authors', '作者'], ['title', '标题'], ['year', '年份'], ['journal', '期刊']].forEach(([key, label]) => {
+            [['authors', tr('lit:ref.field.authors')], ['title', tr('标题')], ['year', tr('年份')], ['journal', tr('期刊')]].forEach(([key, label]) => {
                 if (f[key]) { rows.push([label, esc(f[key])]); }
             });
             const citedBy = (ref.cited_by || []).map((c) => {
@@ -1458,33 +1414,33 @@
                 const name = c.is_candidate
                     ? '<a class="lit-cite-paper" href="#lit-' + esc(turnId) + '-P' + esc(c.paper_id) + '">' + esc(c.short_cite) + '</a>'
                     : '<strong>' + esc(c.short_cite) + '</strong>';
-                return name + ' ' + esc(c.title) + (z ? ' · <a href="' + z + '">在 Zotero 中显示</a>' : '');
+                return name + ' ' + esc(c.title) + (z ? ' · <a href="' + z + tr('">在 Zotero 中显示</a>') : '');
             }).join('<br>');
             const lib = ref.in_library;
             const libNote = lib
-                ? '<div class="lit-warnings">该文献实际已在库中：' + esc(lib.short_cite) + ' ' + esc(lib.title) +
-                  (safeHref(lib.zotero_select_url, ['zotero://']) ? ' · <a href="' + safeHref(lib.zotero_select_url, ['zotero://']) + '">在 Zotero 中显示</a>' : '') + '</div>'
+                ? tr('<div class="lit-warnings">该文献实际已在库中：') + esc(lib.short_cite) + ' ' + esc(lib.title) +
+                  (safeHref(lib.zotero_select_url, ['zotero://']) ? ' · <a href="' + safeHref(lib.zotero_select_url, ['zotero://']) + tr('">在 Zotero 中显示</a>') : '') + '</div>'
                 : '';
             return '<details class="lit-paper" id="' + esc(anchor) + '"' + open + '>' + extraAnchors +
                 '<summary title="' + esc(ref.raw) + '"><span class="lit-badge lit-rel-' + esc(ref.relevance) + '">' + esc(ref.relevance_label) + '</span>' +
-                (lib ? '<span class="lit-badge lit-flag">已在库中</span>' : '') +
+                (lib ? tr('<span class="lit-badge lit-flag">已在库中</span>') : '') +
                 '<span class="lit-paper-brief"><span class="lit-cite-name">' + (index + 1) + '. ' + esc(brief.cite) + '</span>' +
                 '<span class="lit-brief-title">' + esc(brief.title) + '</span></span></summary>' +
                 '<div class="lit-paper-body">' + libNote +
                 (rows.length ? '<table class="lit-ref-fields">' + rows.map(([k, v]) => '<tr><th>' + k + '</th><td>' + v + '</td></tr>').join('') + '</table>' : '') +
-                '<div class="lit-evidence-head"><span class="lit-badge lit-kind-reference">参考文献原文</span>' + esc(ref.ref_ids.join(', ')) + '</div>' +
+                tr('<div class="lit-evidence-head"><span class="lit-badge lit-kind-reference">参考文献原文</span>') + esc(ref.ref_ids.join(', ')) + '</div>' +
                 '<div class="lit-ref-raw no-mathjax">' + esc(ref.raw) + '</div>' +
-                '<div class="lit-paper-meta">被以下库内文献引用：<br>' + (citedBy || '—') + '</div>' +
+                tr('<div class="lit-paper-meta">被以下库内文献引用：<br>') + (citedBy || '—') + '</div>' +
                 '<div class="snippet" style="margin-top:4px;">' + (ref.reason_html || '') + '</div>' +
-                (ref.context_evidence || []).map((ev) => renderEvidence(turnId, ev, '引用处原文')).join('') +
+                (ref.context_evidence || []).map((ev) => renderEvidence(turnId, ev, tr('引用处原文'))).join('') +
                 '</div></details>';
         }
 
         function renderSecondaryCard(turnId, refs) {
             if (!refs.length) { return ''; }
-            return '<div class="lit-card"><h4>二级文献（库中未收录，经库内文献引用 · ' + refs.length + '）' +
-                '<a class="lit-expand-all">全部展开/收起</a></h4>' +
-                '<div class="lit-paper-meta">书目信息逐字摘自引用它的库内文献的参考文献表，未在原文中出现的字段不予显示；相关性为库内文献的转述，并非来自该文献本身。</div>' +
+            return tr('<div class="lit-card"><h4>二级文献（库中未收录，经库内文献引用 · ') + refs.length + '）' +
+                tr('<a class="lit-expand-all">全部展开/收起</a></h4>') +
+                tr('<div class="lit-paper-meta">书目信息逐字摘自引用它的库内文献的参考文献表，未在原文中出现的字段不予显示；相关性为库内文献的转述，并非来自该文献本身。</div>') +
                 refs.map((ref, i) => renderSecondary(turnId, ref, i)).join('') + '</div>';
         }
 
@@ -1502,29 +1458,29 @@
             const usage = turn.usage || stats.usage || {};
 
             // 1) 先给简短直白的回答
-            let html = '<div class="lit-card lit-answer-card"><h4>回答 <span class="lit-badge lit-rel-' + esc(r.confidence) + '">把握：' +
+            let html = tr('<div class="lit-card lit-answer-card"><h4>回答 <span class="lit-badge lit-rel-') + esc(r.confidence) + tr('">把握：') +
                 esc(r.confidence_label) + '</span></h4>' +
-                '<div class="snippet lit-answer">' + (r.short_answer_html || '<span class="empty-tip">（无简短回答）</span>') + '</div>';
+                '<div class="snippet lit-answer">' + (r.short_answer_html || tr('<span class="empty-tip">（无简短回答）</span>')) + '</div>';
             if (r.short_answer_derived) {
-                html += '<div class="lit-stats">（旧记录无简短回答，以上截取自详细报告开头）</div>';
+                html += tr('<div class="lit-stats">（旧记录无简短回答，以上截取自详细报告开头）</div>');
             }
 
             // 2) 详细报告：内容完整保留，默认折叠
             let report = '<div class="snippet lit-report-body">' + (r.judgement_html || '') + '</div>';
             if (r.gaps_html) {
-                report += '<h4 style="margin-top:8px;">缺口与未核实之处</h4><div class="snippet">' + r.gaps_html + '</div>';
+                report += tr('<h4 style="margin-top:8px;">缺口与未核实之处</h4><div class="snippet">') + r.gaps_html + '</div>';
             }
             if (r.warnings && r.warnings.length) {
-                report += '<div class="lit-warnings"><strong>系统校验：</strong><br>' + r.warnings.map(esc).join('<br>') + '</div>';
+                report += tr('<div class="lit-warnings"><strong>系统校验：</strong><br>') + r.warnings.map(esc).join('<br>') + '</div>';
             }
             if (r.judgement_html || r.gaps_html) {
                 html += rememberedDetails('lit-' + turn.id + '-report',
-                    '详细报告' + (r.judgement_chars ? '（约 ' + Number(r.judgement_chars).toLocaleString('en-US') + ' 字）' : ''),
+                    tr('详细报告') + (r.judgement_chars ? tr('（约 ') + Number(r.judgement_chars).toLocaleString('en-US') + tr(' 字）') : ''),
                     report, 'lit-report');
             }
             html += '<div class="lit-stats">' + esc(r.search_summary || '') + (r.search_summary ? ' · ' : '') +
-                esc(stats.rounds || 0) + ' 轮 / ' + esc(stats.tool_calls || 0) + ' 次工具调用 / 浏览 ' + esc(stats.papers_seen || 0) +
-                ' 篇' + (usage.total_tokens ? ' / ' + fmtTokens(usage.total_tokens) + ' tokens' : '') +
+                esc(stats.rounds || 0) + tr(' 轮 / ') + esc(stats.tool_calls || 0) + tr(' 次工具调用 / 浏览 ') + esc(stats.papers_seen || 0) +
+                tr(' 篇') + (usage.total_tokens ? ' / ' + fmtTokens(usage.total_tokens) + ' tokens' : '') +
                 ' · ' + esc(stats.model || '') + '</div></div>';
 
             // 3) 候选文献：高/中相关最多 8 篇直接列出，其余（含低相关）收进折叠组
@@ -1534,15 +1490,15 @@
             cands.forEach((c, i) => {
                 ((c.relevance !== 'low' && primary.length < 8) ? primary : rest).push([c, i]);
             });
-            html += '<div class="lit-card"><h4>候选文献（' + cands.length + '）' +
-                (cands.length ? '<a class="lit-expand-all">全部展开/收起</a>' : '') + '</h4>' +
-                (cands.length ? primary.map(([c, i]) => renderCandidate(turn.id, c, i)).join('') : '<div class="empty-tip">库中未找到可列入的相关文献。</div>');
+            html += tr('<div class="lit-card"><h4>候选文献（') + cands.length + '）' +
+                (cands.length ? tr('<a class="lit-expand-all">全部展开/收起</a>') : '') + '</h4>' +
+                (cands.length ? primary.map(([c, i]) => renderCandidate(turn.id, c, i)).join('') : tr('<div class="empty-tip">库中未找到可列入的相关文献。</div>'));
             if (rest.length) {
-                html += rememberedDetails('lit-' + turn.id + '-more', '其余 ' + rest.length + ' 篇（相关度较低或排序靠后）',
+                html += rememberedDetails('lit-' + turn.id + '-more', tr('其余 ') + rest.length + tr(' 篇（相关度较低或排序靠后）'),
                     rest.map(([c, i]) => renderCandidate(turn.id, c, i)).join(''), 'lit-more');
             }
             if (r.orphan_evidence && r.orphan_evidence.length) {
-                html += rememberedDetails('lit-' + turn.id + '-orphans', '详细报告中引用的其他片段（' + r.orphan_evidence.length + '）',
+                html += rememberedDetails('lit-' + turn.id + '-orphans', tr('详细报告中引用的其他片段（') + r.orphan_evidence.length + '）',
                     r.orphan_evidence.map((ev) => renderEvidence(turn.id, ev, ev.paper_cite)).join(''), 'lit-more');
             }
             return html + '</div>' + renderSecondaryCard(turn.id, r.secondary_references || []);
@@ -1562,7 +1518,7 @@
             logNode.innerHTML = turns.map((turn) => {
                 let html = '<div class="lit-turn"><div class="lit-question">' + esc(turn.question) + '</div>';
                 if (turn.status === 'error') {
-                    html += '<div class="alert alert-danger">检索失败：' + esc(turn.error) + '</div>';
+                    html += tr('<div class="alert alert-danger">检索失败：') + esc(turn.error) + '</div>';
                 }
                 const resultHtml = cfg.renderResult ? cfg.renderResult(turn, helpers) : renderResult(turn);
                 return html + (cfg.traceFirst ? renderTrace(turn) + resultHtml : resultHtml + renderTrace(turn)) + '</div>';
@@ -1627,14 +1583,14 @@
                     body: JSON.stringify({ session_id: sessionId, question: question, use_pro: !!useProInput.checked }),
                 });
                 const payload = await resp.json();
-                if (!resp.ok || !payload.ok) { throw new Error(payload.error || '提交失败，请重试。'); }
+                if (!resp.ok || !payload.ok) { throw new Error(payload.error || tr('提交失败，请重试。')); }
                 questionInput.value = '';
                 if (window.history && window.history.replaceState) {
                     window.history.replaceState(null, '', indexUrl + '?tab=' + cfg.tab + '&' + cfg.tab + '_session=' + encodeURIComponent(payload.session_id));
                 }
                 applyState(payload);
             } catch (error) {
-                renderError(error instanceof Error ? error.message : '提交失败，请重试。');
+                renderError(error instanceof Error ? error.message : tr('提交失败，请重试。'));
                 renderRunning(false);
             }
         });
@@ -1648,7 +1604,7 @@
                 const papers = Array.from(card.querySelectorAll('details.lit-paper'));
                 const anyClosed = papers.some((d) => !d.open);
                 papers.forEach((d) => { d.open = anyClosed; });
-                // 折叠组（"其余 N 篇"）跟着一起开合，否则展开的文献仍被藏在收起的组里
+                // 折叠组（tr("其余 N 篇")）跟着一起开合，否则展开的文献仍被藏在收起的组里
                 card.querySelectorAll(':scope > details.lit-more[id$="-more"]').forEach((d) => { d.open = anyClosed; });
                 return;
             }
@@ -1686,7 +1642,7 @@
         const r = turn.result;
         if (!r) { return ''; }
         let html = '<article class="bubble assistant lit-chat-answer"><div class="bubble-role">AI' +
-            (r.legacy ? ' <span class="lit-stats">（旧版对话记录）</span>' : '') + '</div>' +
+            (r.legacy ? tr(' <span class="lit-stats">（旧版对话记录）</span>') : '') + '</div>' +
             '<div class="bubble-content snippet">' + (r.answer_html || '') + '</div>';
         const papers = r.cited_papers || [];
         if (papers.length) {
@@ -1695,22 +1651,22 @@
                 const z = h.safeHref(p.zotero_select_url, ['zotero://']);
                 const zp = h.safeHref(p.zotero_pdf_url, ['zotero://']);
                 const doi = h.safeHref(p.doi_url, ['https://doi.org/']);
-                if (z) { links.push('<a href="' + z + '">在 Zotero 中显示</a>'); }
-                if (zp) { links.push('<a href="' + zp + '">打开 PDF</a>'); }
+                if (z) { links.push('<a href="' + z + tr('">在 Zotero 中显示</a>')); }
+                if (zp) { links.push('<a href="' + zp + tr('">打开 PDF</a>')); }
                 if (doi) { links.push('<a href="' + doi + '" target="_blank" rel="noopener">DOI</a>'); }
                 return '<li id="lit-' + h.esc(turn.id) + '-P' + h.esc(p.paper_id) + '"><strong>' + h.esc(p.short_cite) + '</strong> ' +
                     h.esc(p.title) + (links.length ? '<span class="lit-paper-links"> · ' + links.join('') + '</span>' : '') + '</li>';
             }).join('');
-            html += h.rememberedDetails('lit-' + turn.id + '-refs', '参考文献（' + papers.length + '）',
+            html += h.rememberedDetails('lit-' + turn.id + '-refs', tr('参考文献（') + papers.length + '）',
                 '<ol class="lit-chat-refs">' + items + '</ol>', 'lit-more');
         }
         const evidence = r.evidence || [];
         if (evidence.length) {
-            html += h.rememberedDetails('lit-' + turn.id + '-evidence', '引用的原文片段（' + evidence.length + '）',
+            html += h.rememberedDetails('lit-' + turn.id + '-evidence', tr('引用的原文片段（') + evidence.length + '）',
                 evidence.map((ev) => h.renderEvidence(turn.id, ev)).join(''), 'lit-more');
         }
         if (r.warnings && r.warnings.length) {
-            html += '<div class="lit-warnings"><strong>系统校验：</strong><br>' + r.warnings.map(h.esc).join('<br>') + '</div>';
+            html += tr('<div class="lit-warnings"><strong>系统校验：</strong><br>') + r.warnings.map(h.esc).join('<br>') + '</div>';
         }
         return html + '</article>';
     }
@@ -1718,15 +1674,15 @@
     if (document.getElementById('lit-root')) {
         pbAgentView({
             prefix: 'lit', tab: 'lit', api: '/admin-api/litsearch', pageUrl: '{{ url_for("litsearch.index") }}',
-            labels: { noSessions: '暂无检索记录。', usageEmpty: '开始检索后，这里会实时显示 token 消耗与预估费用。',
-                      current: '当前检索', button: '检索', busyButton: '检索中...', empty: '请输入检索需求。' },
+            labels: { noSessions: tr('暂无检索记录。'), usageEmpty: tr('开始检索后，这里会实时显示 token 消耗与预估费用。'),
+                      current: tr('当前检索'), button: tr('检索'), busyButton: tr('检索中...'), empty: tr('请输入检索需求。') },
         });
     }
     if (document.getElementById('chat-root')) {
         pbAgentView({
             prefix: 'chat', tab: 'chat', api: '/admin-api/chat', pageUrl: '{{ url_for("chat.index") }}', traceFirst: true, renderResult: renderChatResult,
-            labels: { noSessions: '暂无对话。', usageEmpty: '开始对话后，这里会实时显示 token 消耗与预估费用。',
-                      current: '当前一问', button: '发送', busyButton: '思考中...', empty: '请输入问题后再发送。' },
+            labels: { noSessions: tr('暂无对话。'), usageEmpty: tr('开始对话后，这里会实时显示 token 消耗与预估费用。'),
+                      current: tr('当前一问'), button: tr('发送'), busyButton: tr('思考中...'), empty: tr('请输入问题后再发送。') },
         });
     }
 </script>
@@ -1740,8 +1696,8 @@
         const viewer = document.getElementById('review-viewer');
         const pageUrl = '{{ url_for("review.index") }}';
         const usage = pbUsagePanel(document.getElementById('review-usage-panel'), {
-            session: '整个项目', unit: '个阶段', current: '当前阶段', showIndex: false,
-            usageEmpty: '开始综述后，这里会实时显示 token 消耗与预估费用。',
+            session: tr('整个项目'), unit: tr('个阶段'), current: tr('当前阶段'), showIndex: false,
+            usageEmpty: tr('开始综述后，这里会实时显示 token 消耗与预估费用。'),
         });
         const params = new URLSearchParams(window.location.search);
         let projectId = params.get('review_new') === '1' ? '' : (root.dataset.projectId || '');
@@ -1752,7 +1708,7 @@
 
         const esc = (v) => String(v == null ? '' : v).replace(/&/g, '&amp;').replace(/</g, '&lt;')
             .replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
-        const STATUS = { running: '运行中', done: '已完成', error: '出错', cancelled: '已停止', idle: '未开始' };
+        const STATUS = { running: tr('运行中'), done: tr('已完成'), error: tr('出错'), cancelled: tr('已停止'), idle: tr('未开始') };
 
         function renderError(message) {
             errorWrap.innerHTML = message ? '<div class="alert alert-danger" style="margin: 8px 10px 0 10px;">' + esc(message) + '</div>' : '';
@@ -1763,7 +1719,7 @@
                 method: 'POST', credentials: 'same-origin', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body),
             });
             const data = await resp.json();
-            if (!resp.ok || !data.ok) { throw new Error(data.error || '请求失败'); }
+            if (!resp.ok || !data.ok) { throw new Error(data.error || tr('请求失败')); }
             return data;
         }
 
@@ -1774,26 +1730,26 @@
                     '<div class="session-title">' + esc(p.name) + '</div>' +
                     '<div class="session-meta"><span class="rv-status ' + esc(p.status) + '">' + esc(STATUS[p.status] || p.status) + '</span> ' +
                     esc(p.updated_at) + '</div></a>';
-            }).join('') || '<div class="empty-tip" style="padding:6px;">还没有综述项目。</div>';
+            }).join('') || tr('<div class="empty-tip" style="padding:6px;">还没有综述项目。</div>');
         }
 
         // ---------------- 新建表单 ----------------
         async function renderForm() {
             main.innerHTML = '<form class="rv-form" id="rv-form">' +
-                '<label class="rv-label">项目名称<span class="rv-help">可选，用于文件夹名与 Zotero 标签</span></label>' +
-                '<input class="form-control" name="name" placeholder="例如：Moon volatiles">' +
-                '<label class="rv-label">Collection(s)<span class="rv-help">包含子集合；只使用已被追踪且有全文的文献</span></label>' +
-                '<input class="form-control form-control-sm" id="rv-filter" placeholder="筛选 Collection…" style="margin-bottom:6px;">' +
-                '<div class="rv-collections" id="rv-collections"><div class="empty-tip">正在从 Zotero 读取 Collection…</div></div>' +
-                '<label class="rv-label">综述主题<span class="rv-help">写清楚综述要回答的问题、范围与侧重点</span></label>' +
-                '<textarea class="form-control" name="topic" rows="4" placeholder="例如：太阳系岩质星体中度挥发性元素亏损的现象与机制，侧重同位素证据与形成阶段的约束"></textarea>' +
-                '<label class="rv-label">写作模型</label>' +
+                tr('<label class="rv-label">项目名称<span class="rv-help">可选，用于文件夹名与 Zotero 标签</span></label>') +
+                tr('<input class="form-control" name="name" placeholder="例如：Moon volatiles">') +
+                tr('<label class="rv-label">Collection(s)<span class="rv-help">包含子集合；只使用已被追踪且有全文的文献</span></label>') +
+                tr('<input class="form-control form-control-sm" id="rv-filter" placeholder="筛选 Collection…" style="margin-bottom:6px;">') +
+                tr('<div class="rv-collections" id="rv-collections"><div class="empty-tip">正在从 Zotero 读取 Collection…</div></div>') +
+                tr('<label class="rv-label">综述主题<span class="rv-help">写清楚综述要回答的问题、范围与侧重点</span></label>') +
+                tr('<textarea class="form-control" name="topic" rows="4" placeholder="例如：太阳系岩质星体中度挥发性元素亏损的现象与机制，侧重同位素证据与形成阶段的约束"></textarea>') +
+                tr('<label class="rv-label">写作模型</label>') +
                 '<div class="rv-models">' +
-                '<label class="checked"><input type="radio" name="model" value="flash" checked> Flash<small>便宜、快，适合先跑一版</small></label>' +
-                '<label><input type="radio" name="model" value="pro"> Pro<small>更强的规划与写作，费用更高</small></label></div>' +
-                '<div class="rv-actions"><button type="button" class="btn btn-default btn-sm" id="rv-preview-btn">预览文献数</button>' +
+                tr('<label class="checked"><input type="radio" name="model" value="flash" checked> Flash<small>便宜、快，适合先跑一版</small></label>') +
+                tr('<label><input type="radio" name="model" value="pro"> Pro<small>更强的规划与写作，费用更高</small></label></div>') +
+                tr('<div class="rv-actions"><button type="button" class="btn btn-default btn-sm" id="rv-preview-btn">预览文献数</button>') +
                 '<span class="rv-preview" id="rv-preview"></span>' +
-                '<button type="submit" class="btn btn-primary" style="margin-left:auto;">开始综述</button></div></form>';
+                tr('<button type="submit" class="btn btn-primary" style="margin-left:auto;">开始综述</button></div></form>');
             const form = document.getElementById('rv-form');
             form.querySelectorAll('input[name="model"]').forEach((radio) => radio.addEventListener('change', () => {
                 form.querySelectorAll('.rv-models label').forEach((l) => l.classList.toggle('checked', l.contains(form.querySelector('input[name="model"]:checked'))));
@@ -1801,10 +1757,10 @@
             const selected = () => Array.from(form.querySelectorAll('#rv-collections input:checked')).map((c) => c.value);
             document.getElementById('rv-preview-btn').addEventListener('click', async () => {
                 const out = document.getElementById('rv-preview');
-                out.textContent = '正在统计…';
+                out.textContent = tr('正在统计…');
                 try {
                     const d = await api('/admin-api/review/preview', { collections: selected() });
-                    out.innerHTML = '<strong>' + d.usable + '</strong> 篇可用（共 ' + d.items + ' 个条目；' + d.no_fulltext + ' 篇无全文，' + d.untracked + ' 个未被追踪）';
+                    out.innerHTML = '<strong>' + d.usable + tr('</strong> 篇可用（共 ') + d.items + tr(' 个条目；') + d.no_fulltext + tr(' 篇无全文，') + d.untracked + tr(' 个未被追踪）');
                 } catch (e) { out.textContent = e.message; }
             });
             form.addEventListener('submit', async (event) => {
@@ -1824,7 +1780,7 @@
                 const d = await api('/admin-api/review/collections');
                 const box = document.getElementById('rv-collections');
                 box.innerHTML = d.collections.map((name) => '<label><input type="checkbox" value="' + esc(name) + '"> ' + esc(name) + '</label>').join('') ||
-                    '<div class="empty-tip">没有读取到 Collection（Zotero 是否在运行？）</div>';
+                    tr('<div class="empty-tip">没有读取到 Collection（Zotero 是否在运行？）</div>');
                 document.getElementById('rv-filter').addEventListener('input', (ev) => {
                     const q = ev.target.value.toLowerCase();
                     box.querySelectorAll('label').forEach((l) => { l.style.display = l.textContent.toLowerCase().includes(q) ? '' : 'none'; });
@@ -1842,12 +1798,12 @@
             const running = p.status === 'running';
             const canResume = !p.imported && (!running && p.status !== 'done' || p.stages.some((s) => s.state === 'error'));
             let html = '<div class="lit-card"><div class="rv-head"><div><h3>' + esc(p.name) + '</h3>' +
-                '<div class="rv-meta">' + (p.imported ? '<span class="rv-status cancelled">历史记录（导入）</span> ' : '') +
+                '<div class="rv-meta">' + (p.imported ? tr('<span class="rv-status cancelled">历史记录（导入）</span> ') : '') +
                 '<span class="rv-status ' + esc(p.status) + '">' + esc(STATUS[p.status] || p.status) + '</span> · ' +
-                esc(p.model) + ' · ' + esc(p.collections.join('、')) + ' · 创建于 ' + esc(p.created_at) + '</div></div><div>' +
-                (running ? '<button class="btn btn-default btn-sm" data-act="cancel">停止</button>' : '') +
-                (canResume && !running ? '<button class="btn btn-primary btn-sm" data-act="resume">' + (p.status === 'done' ? '重试失败项' : '继续') + '</button>' : '') +
-                '</div></div><div class="rv-topic-summary" style="margin-top:8px;"><strong>主题：</strong>' + esc(p.topic) + '</div>' +
+                esc(p.model) + ' · ' + esc(p.collections.join('、')) + tr(' · 创建于 ') + esc(p.created_at) + '</div></div><div>' +
+                (running ? tr('<button class="btn btn-default btn-sm" data-act="cancel">停止</button>') : '') +
+                (canResume && !running ? '<button class="btn btn-primary btn-sm" data-act="resume">' + (p.status === 'done' ? tr('重试失败项') : tr('继续')) + '</button>' : '') +
+                tr('</div></div><div class="rv-topic-summary" style="margin-top:8px;"><strong>主题：</strong>') + esc(p.topic) + '</div>' +
                 (p.error ? '<div class="alert alert-danger" style="margin:8px 0 0 0;">' + esc(p.error) + '</div>' : '') +
                 '<div class="rv-steps">' + p.stages.map((s) => '<div class="rv-step ' + esc(s.state) + '"><div class="rv-step-label"><span class="rv-dot"></span>' +
                     esc(s.label) + '</div><div class="rv-step-detail">' + esc(s.detail) + '</div></div>').join('') + '</div>';
@@ -1855,39 +1811,39 @@
                 html += '<div class="rv-meta" style="margin:-4px 0 8px 0;">' + esc(p.source_note) + '</div>';
             }
             if (p.attachments && p.attachments.length) {
-                html += '<div class="rv-meta" style="margin:0 0 8px 0;">附件：' + p.attachments.map((a) =>
+                html += tr('<div class="rv-meta" style="margin:0 0 8px 0;">附件：') + p.attachments.map((a) =>
                     '<a class="rv-link" data-path="' + esc(a.path) + '" data-title="' + esc(a.label) + '">' + esc(a.label) + '</a>').join(' · ') + '</div>';
             }
             if (p.final && p.final.html) {
                 html += '<div class="rv-actions" style="margin:0 0 6px 0;"><a class="btn btn-success btn-sm" href="/admin-api/review/doc?project_id=' + encodeURIComponent(p.id) +
-                    '&path=' + encodeURIComponent(p.final.path) + '&download=1">下载最终综述 (.md)</a></div>';
+                    '&path=' + encodeURIComponent(p.final.path) + tr('&download=1">下载最终综述 (.md)</a></div>');
             }
             html += '</div>';
 
             if (p.final && p.final.html) {
-                html += '<div class="lit-card"><h4>最终综述</h4>' + details('rv-' + p.id + '-final', '展开全文', '<div class="snippet rv-final-body">' + p.final.html + '</div>', 'lit-report') + '</div>';
+                html += tr('<div class="lit-card"><h4>最终综述</h4>') + details('rv-' + p.id + '-final', tr('展开全文'), '<div class="snippet rv-final-body">' + p.final.html + '</div>', 'lit-report') + '</div>';
             }
             if (p.subtopics.length) {
-                html += '<div class="lit-card"><h4>子课题（' + p.subtopics.length + '）</h4>' + p.subtopics.map((t) => {
+                html += tr('<div class="lit-card"><h4>子课题（') + p.subtopics.length + '）</h4>' + p.subtopics.map((t) => {
                     const done = t.papers.filter((x) => x.status === 'done').length;
                     const chips = t.papers.map((x) => '<span class="rv-chip ' + esc(x.status) + '" data-path="' + esc(x.status === 'done' ? x.path : '') + '" data-title="' +
-                        esc(t.label + ' · ' + x.cite) + '" title="' + esc(x.title) + '">' + (x.status === 'done' ? '✓ ' : x.status === 'error' ? '✕ ' : x.status === 'running' ? '… ' : x.status === 'missing' ? '缺 ' : '○ ') + esc(x.cite) + '</span>').join('');
+                        esc(t.label + ' · ' + x.cite) + '" title="' + esc(x.title) + '">' + (x.status === 'done' ? '✓ ' : x.status === 'error' ? '✕ ' : x.status === 'running' ? '… ' : x.status === 'missing' ? tr('缺 ') : '○ ') + esc(x.cite) + '</span>').join('');
                     const review = t.review_status === 'done'
-                        ? '<a class="rv-link" data-path="' + esc(t.review_path) + '" data-title="' + esc(t.label + ' · 子课题综述') + '">查看子课题综述 →</a>'
-                        : '<span class="rv-meta">子课题综述：' + esc({ running: '撰写中', error: '失败', pending: '待撰写' }[t.review_status] || t.review_status) + '</span>';
-                    return details('rv-' + p.id + '-t' + t.index, esc(t.index + '. ' + t.label) + ' <span class="rv-meta">精读 ' + done + ' / ' + t.papers.length + '</span>',
+                        ? '<a class="rv-link" data-path="' + esc(t.review_path) + '" data-title="' + esc(t.label + tr(' · 子课题综述')) + tr('">查看子课题综述 →</a>')
+                        : tr('<span class="rv-meta">子课题综述：') + esc({ running: tr('撰写中'), error: tr('失败'), pending: tr('待撰写') }[t.review_status] || t.review_status) + '</span>';
+                    return details('rv-' + p.id + '-t' + t.index, esc(t.index + '. ' + t.label) + tr(' <span class="rv-meta">精读 ') + done + ' / ' + t.papers.length + '</span>',
                         '<div class="rv-topic-summary">' + esc(t.summary) + '</div><div class="rv-chips">' + chips + '</div>' + review, 'rv-topic');
                 }).join('') + '</div>';
             }
             const notices = (p.plan_warnings || []).map(esc);
             if (p.excluded.length) {
-                notices.push(p.excluded.length + ' 篇被排除：' + p.excluded.slice(0, 20).map((e) => esc((e.title || e.key) + '（' + e.reason + '）')).join('；') + (p.excluded.length > 20 ? ' …' : ''));
+                notices.push(tr('review:excluded.notice', { n: p.excluded.length, list: p.excluded.slice(0, 20).map((e) => esc(tr('review:excluded.item', { title: e.title || e.key, reason: e.reason }))).join(tr('common:list_sep_strong')) + (p.excluded.length > 20 ? ' …' : '') }));
             }
             if (notices.length) {
-                html += '<div class="lit-card">' + details('rv-' + p.id + '-notices', '规划与文献说明（' + notices.length + '）', '<div class="lit-warnings">' + notices.join('<br>') + '</div>', 'lit-more') + '</div>';
+                html += '<div class="lit-card">' + details('rv-' + p.id + '-notices', tr('规划与文献说明（') + notices.length + '）', '<div class="lit-warnings">' + notices.join('<br>') + '</div>', 'lit-more') + '</div>';
             }
             const icons = { thought: '💭', tool: '📄', system: 'ℹ️', warn: '⚠️' };
-            html += '<div class="lit-card">' + details('rv-' + p.id + '-trace', '运行日志（' + p.trace.length + '）' + (running && p.trace.length ? ' <span class="lit-latest">' + esc(p.trace[p.trace.length - 1].text) + '</span>' : ''),
+            html += '<div class="lit-card">' + details('rv-' + p.id + '-trace', tr('运行日志（') + p.trace.length + '）' + (running && p.trace.length ? ' <span class="lit-latest">' + esc(p.trace[p.trace.length - 1].text) + '</span>' : ''),
                 '<ol class="lit-trace" style="font-size:12px;">' + p.trace.slice().reverse().map((t) => '<li class="kind-' + esc(t.kind) + '">' + (icons[t.kind] || '·') + ' ' + esc(t.at) + ' ' + esc(t.text) + '</li>').join('') + '</ol>', 'lit-trace') + '</div>';
             main.innerHTML = html;
             main.querySelectorAll('details[data-remember]').forEach((node) => node.addEventListener('toggle', () => {
@@ -1929,7 +1885,7 @@
                 viewerPath = doc.dataset.path;
                 document.getElementById('review-viewer-title').textContent = doc.dataset.title || viewerPath;
                 const body = document.getElementById('review-viewer-body');
-                body.innerHTML = '<div class="empty-tip">加载中…</div>';
+                body.innerHTML = tr('<div class="empty-tip">加载中…</div>');
                 viewer.hidden = false;
                 try {
                     const d = await api('/admin-api/review/doc?project_id=' + encodeURIComponent(projectId) + '&path=' + encodeURIComponent(viewerPath));

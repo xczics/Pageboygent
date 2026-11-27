@@ -201,15 +201,15 @@
 {% block body %}
 <div class="fh" id="fh-root" data-initial-tab="{{ initial_tab }}">
     {% if missing_settings %}
-    <div class="fh-alert bad"><strong>还缺少必填配置：</strong>{{ missing_settings|join('、') }}。请先在下面的“设置”中填写并保存，然后重启服务。</div>
+    <div class="fh-alert bad"><strong>{{ _('还缺少必填配置：') }}</strong>{{ _('home:settings.missing_hint', names=missing_settings|join(_('home:list_sep'))) }}</div>
     {% endif %}
     <nav class="fh-tabs" id="fh-tabs">
-        <button data-tab="overview">概览</button>
-        <button data-tab="reader">阅读<span class="fh-badge" id="fh-unread-badge" hidden></span></button>
-        <button data-tab="pool">候选池</button>
-        <button data-tab="reports">周报<span class="fh-badge" id="fh-report-badge" hidden></span></button>
-        <button data-tab="profile">画像</button>
-        <button data-tab="settings">设置</button>
+        <button data-tab="overview">{{ _('概览') }}</button>
+        <button data-tab="reader">{{ _('阅读') }}<span class="fh-badge" id="fh-unread-badge" hidden></span></button>
+        <button data-tab="pool">{{ _('候选池') }}</button>
+        <button data-tab="reports">{{ _('周报') }}<span class="fh-badge" id="fh-report-badge" hidden></span></button>
+        <button data-tab="profile">{{ _('画像') }}</button>
+        <button data-tab="settings">{{ _('设置') }}</button>
         <span class="fh-spacer" id="fh-run-state"></span>
     </nav>
     <div id="fh-error"></div>
@@ -240,8 +240,8 @@
     async function api(path, body) {
         const resp = await fetch(path, body === undefined ? { credentials: 'same-origin' } : {
             method: 'POST', credentials: 'same-origin', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
-        const data = await resp.json().catch(() => ({ ok: false, error: '服务器返回了无法解析的内容' }));
-        if (!resp.ok || !data.ok) { const e = new Error(data.error || '请求失败'); e.data = data; throw e; }
+        const data = await resp.json().catch(() => ({ ok: false, error: tr('服务器返回了无法解析的内容') }));
+        if (!resp.ok || !data.ok) { const e = new Error(data.error || tr('请求失败')); e.data = data; throw e; }
         return data;
     }
     function showError(msg) {
@@ -252,31 +252,31 @@
     // ---------------- 通用：文章条目 ----------------
     function tags(it) {
         let t = '';
-        if (it.status === 'ingested') { t += '<span class="fh-tag ingested">已入库' + (it.ingest_mode === 'auto' ? '' : '') + '</span>'; }
-        else if (it.status === 'dismissed') { t += '<span class="fh-tag dismissed">不感兴趣</span>'; }
+        if (it.status === 'ingested') { t += tr('<span class="fh-tag ingested">已入库') + (it.ingest_mode === 'auto' ? '' : '') + '</span>'; }
+        else if (it.status === 'dismissed') { t += tr('<span class="fh-tag dismissed">不感兴趣</span>'); }
         else if (it.band) { t += '<span class="fh-tag ' + esc(it.band) + '">' + esc(it.band_label) + '</span>'; }
-        if (it.status === 'in_library') { t += '<span class="fh-tag ingested">库中已有</span>'; }
-        if (!it.has_abstract) { t += '<span class="fh-tag noabs" title="RSS 和开放数据库都没有摘要（如 Elsevier 系期刊）：按“仅标题”单独打分、单独校准自动入库门槛">仅标题</span>'; }
-        if (it.rerank_note) { t += '<span class="fh-tag ' + (it.rerank_note.indexOf('上升') >= 0 ? 'rise' : 'fall') + '" title="已打过分的文章会随你的反馈、画像和文献库的变化重新评估；重新评估最多升到“待确认”，不会自动入库">' + (it.rerank_note.indexOf('上升') >= 0 ? '↑ ' : '↓ ') + esc(it.rerank_note) + '</span>'; }
-        if (it.exploration) { t += '<span class="fh-tag explore" title="分数在边界附近，你的判断对校准最有用">请你判断</span>'; }
+        if (it.status === 'in_library') { t += tr('<span class="fh-tag ingested">库中已有</span>'); }
+        if (!it.has_abstract) { t += tr('<span class="fh-tag noabs" title="RSS 和开放数据库都没有摘要（如 Elsevier 系期刊）：按“仅标题”单独打分、单独校准自动入库门槛">仅标题</span>'); }
+        if (it.rerank_note) { t += '<span class="fh-tag ' + (it.rerank_note.indexOf('上升') >= 0 ? 'rise' : 'fall') + tr('" title="已打过分的文章会随你的反馈、画像和文献库的变化重新评估；重新评估最多升到“待确认”，不会自动入库">') + (it.rerank_note.indexOf('上升') >= 0 ? '↑ ' : '↓ ') + esc(tr(it.rerank_note)) + '</span>'; }
+        if (it.exploration) { t += tr('<span class="fh-tag explore" title="分数在边界附近，你的判断对校准最有用">请你判断</span>'); }
         return t;
     }
     function actions(it) {
         const up = it.feedback === 1 ? ' on' : '', down = it.feedback === -1 ? ' on' : '';
         let h = '<div class="fh-actions" data-id="' + it.id + '">';
-        if (it.status !== 'ingested' && it.status !== 'in_library') { h += '<button class="fh-btn primary" data-act="ingest">入库</button>'; }
+        if (it.status !== 'ingested' && it.status !== 'in_library') { h += tr('<button class="fh-btn primary" data-act="ingest">入库</button>'); }
         if (it.zotero_url) { h += '<a class="fh-btn" href="' + safeUrl(it.zotero_url, ['zotero://']) + '">Zotero</a>'; }
-        h += '<button class="fh-btn' + up + '" data-act="up" title="感兴趣">👍</button><button class="fh-btn' + down + '" data-act="down" title="不感兴趣">👎</button></div>';
+        h += '<button class="fh-btn' + up + tr('" data-act="up" title="感兴趣">👍</button><button class="fh-btn') + down + tr('" data-act="down" title="不感兴趣">👎</button></div>');
         return h;
     }
     function itemRow(it) {
         const score = it.score == null ? '–' : it.score;
-        return '<div class="fh-item"><div class="fh-score ' + esc(it.band || '') + '" title="综合分">' + score + '</div><div>' +
+        return '<div class="fh-item"><div class="fh-score ' + esc(it.band || '') + tr('" title="综合分">') + score + '</div><div>' +
             '<div class="fh-title" data-open="' + it.id + '">' + esc(it.title) + '</div>' +
-            '<div class="fh-meta">' + tags(it) + esc(it.authors.slice(0, 3).join(', ')) + (it.author_count > 3 ? ' 等' : '') + ' · ' + esc(it.journal || it.feed) +
-            (it.published ? ' · ' + esc(it.published) : '') + (it.facet ? ' · 方向：' + esc(it.facet) : '') + '</div>' +
+            '<div class="fh-meta">' + tags(it) + esc(it.authors.slice(0, 3).join(', ')) + (it.author_count > 3 ? tr(' 等') : '') + ' · ' + esc(it.journal || it.feed) +
+            (it.published ? ' · ' + esc(it.published) : '') + (it.facet ? tr(' · 方向：') + esc(it.facet) : '') + '</div>' +
             (it.reason ? '<div class="fh-reason">' + esc(it.reason) + '</div>' : '') +
-            (it.ingest_error ? '<div class="fh-reason" style="color:#991b1b;">入库失败：' + esc(it.ingest_error) + '</div>' : '') +
+            (it.ingest_error ? tr('<div class="fh-reason" style="color:#991b1b;">入库失败：') + esc(it.ingest_error) + '</div>' : '') +
             '</div>' + actions(it) + '</div>';
     }
     async function onItemAction(event) {
@@ -305,22 +305,22 @@
     // ---------------- 周报渲染（概览与周报页共用） ----------------
     function renderReport(r, full) {
         const s = r.stats || {};
-        let h = '<div class="fh-card fh-report"><div class="fh-card-head"><h3>' + (r.unread ? '📬 新周报 · ' : '周报 · ') + esc(r.week) +
-            (r.range ? '（' + esc(r.range[0]) + ' – ' + esc(r.range[1]) + '）' : '') + '</h3><span class="fh-note">生成于 ' + esc(r.generated_at) +
-            (r.unread ? ' · <a href="#" data-read-report="' + esc(r.week) + '">标为已读</a>' : '') + '</span></div>' +
-            '<div class="fh-chips"><span class="fh-chip">新文章 <strong>' + (s.items || 0) + '</strong></span><span class="fh-chip">自动入库 <strong>' + (s.auto || 0) +
-            '</strong></span><span class="fh-chip">你确认入库 <strong>' + (s.manual || 0) + '</strong></span><span class="fh-chip">待确认 <strong>' + (s.confirm || 0) +
-            '</strong></span><span class="fh-chip">库中已有 <strong>' + (s.in_library || 0) + '</strong></span></div>';
+        let h = '<div class="fh-card fh-report"><div class="fh-card-head"><h3>' + (r.unread ? tr('📬 新周报 · ') : tr('周报 · ')) + esc(r.week) +
+            (r.range ? '（' + esc(r.range[0]) + ' – ' + esc(r.range[1]) + '）' : '') + tr('</h3><span class="fh-note">生成于 ') + esc(r.generated_at) +
+            (r.unread ? ' · <a href="#" data-read-report="' + esc(r.week) + tr('">标为已读</a>') : '') + '</span></div>' +
+            tr('<div class="fh-chips"><span class="fh-chip">新文章 <strong>') + (s.items || 0) + tr('</strong></span><span class="fh-chip">自动入库 <strong>') + (s.auto || 0) +
+            tr('</strong></span><span class="fh-chip">你确认入库 <strong>') + (s.manual || 0) + tr('</strong></span><span class="fh-chip">待确认 <strong>') + (s.confirm || 0) +
+            tr('</strong></span><span class="fh-chip">库中已有 <strong>') + (s.in_library || 0) + '</strong></span></div>';
         if (r.overview_html) { h += '<div class="snippet">' + r.overview_html + '</div>'; }
         (r.groups || []).forEach((g) => {
             const items = full ? g.items : g.items.slice(0, 4);
             h += '<div class="fh-section-title">' + esc(g.name) + '（' + g.items.length + '）</div>' + items.map(itemRow).join('');
         });
         if (r.boundary && r.boundary.length) {
-            h += '<div class="fh-section-title">🤔 请你判断（分数在边界附近，你的回答对校准最有用）</div>' + r.boundary.map(itemRow).join('');
+            h += tr('<div class="fh-section-title">🤔 请你判断（分数在边界附近，你的回答对校准最有用）</div>') + r.boundary.map(itemRow).join('');
         }
         if (!full && r.groups && r.groups.some((g) => g.items.length > 4)) {
-            h += '<div style="margin-top:8px;"><a href="#" data-show-report="' + esc(r.week) + '">查看完整周报 →</a></div>';
+            h += '<div style="margin-top:8px;"><a href="#" data-show-report="' + esc(r.week) + tr('">查看完整周报 →</a></div>');
         }
         return h + '</div>';
     }
@@ -338,51 +338,51 @@
         const feeds = o.feeds || [];
         let h = '';
         if (!feeds.length) {
-            h += '<div class="fh-alert info">还没有订阅源。在下面的“订阅源”里添加期刊或 arXiv 的 RSS 地址，系统会定时抓取、按你的文献库挑出可能感兴趣的文章，每周生成周报。</div>';
+            h += tr('<div class="fh-alert info">还没有订阅源。在下面的“订阅源”里添加期刊或 arXiv 的 RSS 地址，系统会定时抓取、按你的文献库挑出可能感兴趣的文章，每周生成周报。</div>');
         }
         if (o.unread_report) { h += '<div class="fh-grid">' + renderReport(o.unread_report, false) + '</div>'; }
-        h += '<div class="fh-grid two"><div class="fh-card"><div class="fh-card-head"><h3>待你确认入库</h3><span class="fh-note">' + o.confirm_total + ' 篇 · 中分文章，确认后进入 Zotero 的追踪集合</span></div>' +
-            (o.confirm.length ? o.confirm.map(itemRow).join('') + (o.confirm_total > o.confirm.length ? '<div style="margin-top:8px;"><a href="#" data-goto="pool">在候选池查看全部 →</a></div>' : '')
-                : '<div class="fh-empty">暂时没有需要确认的文章。</div>') + '</div>';
+        h += tr('<div class="fh-grid two"><div class="fh-card"><div class="fh-card-head"><h3>待你确认入库</h3><span class="fh-note">') + o.confirm_total + tr(' 篇 · 中分文章，确认后进入 Zotero 的追踪集合</span></div>') +
+            (o.confirm.length ? o.confirm.map(itemRow).join('') + (o.confirm_total > o.confirm.length ? tr('<div style="margin-top:8px;"><a href="#" data-goto="pool">在候选池查看全部 →</a></div>') : '')
+                : tr('<div class="fh-empty">暂时没有需要确认的文章。</div>')) + '</div>';
         const pr = o.precision || { series: {}, auto_threshold: {}, auto_precision: {} };
         const precRow = (info, label) => {
             const series = (pr.series || {})[info] || [];
             const ap = (pr.auto_precision || {})[info] || {};
-            const bars = series.map((p) => '<div class="bar" title="' + esc(p.week) + '：' + (p.precision == null ? '本周没有反馈' : (p.good + ' / ' + p.rated + ' 篇被你认可')) + '">' +
+            const bars = series.map((p) => '<div class="bar" title="' + esc(p.week) + '：' + (p.precision == null ? tr('本周没有反馈') : (p.good + ' / ' + p.rated + tr(' 篇被你认可'))) + '">' +
                 (p.precision == null ? '<div class="none"></div>' : '<div style="height:' + Math.max(4, p.precision * 40) + 'px"></div>') + '<span>' + esc(p.week.slice(-3)) + '</span></div>').join('');
-            return '<div style="margin-top:8px;"><div style="display:flex;justify-content:space-between;font-size:12px;"><strong>' + label + '</strong><span class="fh-note">自动入库门槛 ' +
-                Math.round(((pr.auto_threshold || {})[info] || 0) * 100) + ' 分 · 自动入库准确率 ' + (ap.precision == null ? '暂无反馈' : Math.round(ap.precision * 100) + '%（' + ap.good + '/' + ap.rated + '）') +
+            return '<div style="margin-top:8px;"><div style="display:flex;justify-content:space-between;font-size:12px;"><strong>' + label + tr('</strong><span class="fh-note">自动入库门槛 ') +
+                Math.round(((pr.auto_threshold || {})[info] || 0) * 100) + tr(' 分 · 自动入库准确率 ') + (ap.precision == null ? tr('暂无反馈') : Math.round(ap.precision * 100) + '%（' + ap.good + '/' + ap.rated + '）') +
                 '</span></div><div class="fh-prec" style="height:52px;">' + bars + '</div></div>';
         };
         const hasPrec = ['abstract', 'title'].some((k) => ((pr.series || {})[k] || []).some((p) => p.precision != null));
-        const precHtml = (hasPrec ? '' : '<div class="fh-empty" style="padding:4px 0;">对推荐的文章点 👍 / 👎 之后，这里会显示每周的推荐命中率。</div>') +
-            precRow('abstract', '有摘要') + precRow('title', '仅标题（如 GCA 等 Elsevier 期刊）');
-        h += '<div><div class="fh-card" style="margin-bottom:14px;"><div class="fh-card-head"><h3>运行状态</h3>' +
-            '<button class="fh-btn primary" id="fh-run"' + (running || !feeds.length ? ' disabled' : '') + '>' + (running ? '抓取中…' : '立即抓取') + '</button></div>' +
-            '<div class="fh-status"><div><div class="k">状态</div><div class="v"><span class="fh-dot ' + (running ? 'run' : (st.last_error ? 'err' : 'ok')) + '"></span>' +
-            (running ? (st.stage ? '正在' + esc(st.stage) + (st.progress ? ' · ' + esc(st.progress) : '') : '正在抓取与评分') : (st.last_error ? '上次运行出错' : '空闲')) + '</div></div>' +
-            '<div><div class="k">上次抓取</div><div class="v">' + esc(st.last_fetch_at || '尚未抓取') + '</div></div>' +
-            '<div><div class="k">下次抓取</div><div class="v">' + esc(st.next_fetch_at || '') + '</div></div>' +
-            '<div><div class="k">抓取间隔 / 保留期</div><div class="v">' + esc(st.interval_hours) + ' 小时 / ' + esc(o.retention_days) + ' 天</div></div>' +
-            '<div><div class="k">本周新文章</div><div class="v">' + o.week.items + '（自动入库 ' + o.week.auto + '）</div></div>' +
-            '<div><div class="k">未读</div><div class="v">' + o.week.unread + '</div></div></div>' +
+        const precHtml = (hasPrec ? '' : tr('<div class="fh-empty" style="padding:4px 0;">对推荐的文章点 👍 / 👎 之后，这里会显示每周的推荐命中率。</div>')) +
+            precRow('abstract', tr('有摘要')) + precRow('title', tr('仅标题（如 GCA 等 Elsevier 期刊）'));
+        h += tr('<div><div class="fh-card" style="margin-bottom:14px;"><div class="fh-card-head"><h3>运行状态</h3>') +
+            '<button class="fh-btn primary" id="fh-run"' + (running || !feeds.length ? ' disabled' : '') + '>' + (running ? tr('抓取中…') : tr('立即抓取')) + '</button></div>' +
+            tr('<div class="fh-status"><div><div class="k">状态</div><div class="v"><span class="fh-dot ') + (running ? 'run' : (st.last_error ? 'err' : 'ok')) + '"></span>' +
+            (running ? (st.stage ? tr('正在') + esc(st.stage) + (st.progress ? ' · ' + esc(st.progress) : '') : tr('正在抓取与评分')) : (st.last_error ? tr('上次运行出错') : tr('空闲'))) + '</div></div>' +
+            tr('<div><div class="k">上次抓取</div><div class="v">') + esc(st.last_fetch_at || tr('尚未抓取')) + '</div></div>' +
+            tr('<div><div class="k">下次抓取</div><div class="v">') + esc(st.next_fetch_at || '') + '</div></div>' +
+            tr('<div><div class="k">抓取间隔 / 保留期</div><div class="v">') + esc(st.interval_hours) + tr(' 小时 / ') + esc(o.retention_days) + tr(' 天</div></div>') +
+            tr('<div><div class="k">本周新文章</div><div class="v">') + o.week.items + tr('（自动入库 ') + o.week.auto + '）</div></div>' +
+            tr('<div><div class="k">未读</div><div class="v">') + o.week.unread + '</div></div></div>' +
             (st.last_error ? '<div class="fh-reason" style="color:#991b1b;margin-top:6px;">' + esc(st.last_error) + '</div>' : '') +
-            '</div><div class="fh-card"><div class="fh-card-head"><h3>推荐质量</h3><span class="fh-note">两类文章分开统计；对自动入库的文章点 👎 即记为一次误判，门槛会据此自动收紧</span></div>' +
+            tr('</div><div class="fh-card"><div class="fh-card-head"><h3>推荐质量</h3><span class="fh-note">两类文章分开统计；对自动入库的文章点 👎 即记为一次误判，门槛会据此自动收紧</span></div>') +
             precHtml + '</div></div></div>';
 
-        h += '<div class="fh-card"><div class="fh-card-head"><h3>订阅源（' + feeds.length + '）</h3><span class="fh-note">入库的文章进入 Zotero 的 RSS_TRACK/订阅源名 子集合</span></div>';
+        h += tr('<div class="fh-card"><div class="fh-card-head"><h3>订阅源（') + feeds.length + tr('）</h3><span class="fh-note">入库的文章进入 Zotero 的 RSS_TRACK/订阅源名 子集合</span></div>');
         if (feeds.length) {
-            h += '<table class="fh-table"><tr><th>名称</th><th>上次抓取</th><th class="num">条目</th><th class="num">推荐</th><th class="num">未读</th><th>选项</th><th></th></tr>' +
+            h += tr('<table class="fh-table"><tr><th>名称</th><th>上次抓取</th><th class="num">条目</th><th class="num">推荐</th><th class="num">未读</th><th>选项</th><th></th></tr>') +
                 feeds.map((f) => '<tr data-feed="' + f.id + '"><td><input class="fh-input" data-feed-name value="' + esc(f.name) + '" style="max-width:260px;">' +
                     '<div class="fh-url">' + esc(f.url) + '</div>' + (f.last_error ? '<div class="fh-reason" style="color:#991b1b;">' + esc(f.last_error) + '</div>' : '') + '</td>' +
-                    '<td>' + esc(f.last_fetch_at || '—') + (f.last_fetch_at ? '<div class="fh-note">新增 ' + f.last_new_count + '</div>' : '') + '</td>' +
+                    '<td>' + esc(f.last_fetch_at || '—') + (f.last_fetch_at ? tr('<div class="fh-note">新增 ') + f.last_new_count + '</div>' : '') + '</td>' +
                     '<td class="num">' + f.items + '</td><td class="num">' + f.picked + '</td><td class="num">' + f.unread + '</td>' +
-                    '<td><label class="fh-note"><input type="checkbox" data-feed-enabled' + (f.enabled ? ' checked' : '') + '> 启用</label><br>' +
-                    '<label class="fh-note" title="综合期刊（如 Nature、Science）：内容离你的库太远的文章不送 LLM 判断，只为省钱，不影响打分"><input type="checkbox" data-feed-broad' + (f.broad ? ' checked' : '') + '> 综合期刊</label></td>' +
-                    '<td><button class="fh-btn" data-feed-save>保存</button> <button class="fh-btn danger" data-feed-del>删除</button></td></tr>').join('') + '</table>';
+                    '<td><label class="fh-note"><input type="checkbox" data-feed-enabled' + (f.enabled ? ' checked' : '') + tr('> 启用</label><br>') +
+                    tr('<label class="fh-note" title="综合期刊（如 Nature、Science）：内容离你的库太远的文章不送 LLM 判断，只为省钱，不影响打分"><input type="checkbox" data-feed-broad') + (f.broad ? ' checked' : '') + tr('> 综合期刊</label></td>') +
+                    tr('<td><button class="fh-btn" data-feed-save>保存</button> <button class="fh-btn danger" data-feed-del>删除</button></td></tr>')).join('') + '</table>';
         }
-        h += '<div class="fh-form"><input type="text" id="fh-new-name" placeholder="名称（可留空，自动取 RSS 标题）"><input type="text" id="fh-new-url" placeholder="RSS 地址，例如 https://rss.arxiv.org/rss/astro-ph.EP">' +
-            '<label class="fh-note"><input type="checkbox" id="fh-new-broad"> 综合期刊</label><button class="fh-btn" id="fh-preview">试抓预览</button><button class="fh-btn primary" id="fh-add">添加</button></div>' +
+        h += tr('<div class="fh-form"><input type="text" id="fh-new-name" placeholder="名称（可留空，自动取 RSS 标题）"><input type="text" id="fh-new-url" placeholder="RSS 地址，例如 https://rss.arxiv.org/rss/astro-ph.EP">') +
+            tr('<label class="fh-note"><input type="checkbox" id="fh-new-broad"> 综合期刊</label><button class="fh-btn" id="fh-preview">试抓预览</button><button class="fh-btn primary" id="fh-add">添加</button></div>') +
             '<div id="fh-preview-out"></div></div>';
         panels.overview.innerHTML = h;
         typeset(panels.overview);
@@ -392,11 +392,11 @@
         if (e.target.id === 'fh-run') { try { await api('/admin-api/feed/run', {}); refresh(); } catch (err) { showError(err.message); } return; }
         if (e.target.id === 'fh-preview') {
             const out = document.getElementById('fh-preview-out');
-            out.innerHTML = '<div class="fh-preview">试抓中…</div>';
+            out.innerHTML = tr('<div class="fh-preview">试抓中…</div>');
             try {
                 const d = await api('/admin-api/feed/preview', { url: document.getElementById('fh-new-url').value });
-                out.innerHTML = '<div class="fh-preview"><strong>' + esc(d.title || '（无标题）') + '</strong>：当前 ' + d.entries + ' 条，其中 ' + d.with_abstract + ' 条带摘要、' + d.with_doi +
-                    ' 条带 DOI（没有摘要的会用 DOI 去 OpenAlex / Crossref 补全）<br>' + d.samples.map((t) => '· ' + esc(t)).join('<br>') + '</div>';
+                out.innerHTML = '<div class="fh-preview"><strong>' + esc(d.title || tr('（无标题）')) + tr('</strong>：当前 ') + d.entries + tr(' 条，其中 ') + d.with_abstract + tr(' 条带摘要、') + d.with_doi +
+                    tr(' 条带 DOI（没有摘要的会用 DOI 去 OpenAlex / Crossref 补全）<br>') + d.samples.map((t) => '· ' + esc(t)).join('<br>') + '</div>';
                 if (!document.getElementById('fh-new-name').value && d.title) { document.getElementById('fh-new-name').value = d.title.replace(/\//g, '-'); }
             } catch (err) { out.innerHTML = '<div class="fh-preview" style="color:#991b1b;">' + esc(err.message) + '</div>'; }
             return;
@@ -419,7 +419,7 @@
                 showError(''); renderOverview(overview);
             } catch (err) { showError(err.message); }
         } else if (e.target.matches('[data-feed-del]')) {
-            if (!window.confirm('删除这个订阅源？未入库、未反馈的条目会一起删除；已入库或有反馈的条目会保留，用于画像学习。')) { return; }
+            if (!window.confirm(tr('删除这个订阅源？未入库、未反馈的条目会一起删除；已入库或有反馈的条目会保留，用于画像学习。'))) { return; }
             try { overview = await api('/admin-api/feed/delete', { id }); renderOverview(overview); } catch (err) { showError(err.message); }
         }
     });
@@ -432,17 +432,18 @@
         let list;
         try { list = await api('/admin-api/feed/items?' + params.toString()); } catch (e) { showError(e.message); return; }
         const totalUnread = feeds.reduce((s, f) => s + f.unread, 0);
-        let h = '<div class="fh-reader"><div class="fh-pane"><div class="fh-pane-head">订阅源</div>' +
-            '<div class="fh-feedlink' + (reader.feed ? '' : ' active') + '" data-feed-pick=""><span>全部</span><span class="n">' + totalUnread + '</span></div>' +
+        let h = tr('<div class="fh-reader"><div class="fh-pane"><div class="fh-pane-head">订阅源</div>') +
+            '<div class="fh-feedlink' + (reader.feed ? '' : ' active') + tr('" data-feed-pick=""><span>全部</span><span class="n">') + totalUnread + '</span></div>' +
             feeds.map((f) => '<div class="fh-feedlink' + (String(f.id) === String(reader.feed) ? ' active' : '') + '" data-feed-pick="' + f.id + '"><span>' + esc(f.name) +
                 '</span><span class="n">' + f.unread + '</span></div>').join('') + '</div>' +
-            '<div class="fh-pane"><div class="fh-pane-head"><select id="fh-reader-view"><option value="all">全部</option><option value="unread">未读</option><option value="recommended">推荐</option></select>' +
-            '<span class="fh-note" style="font-weight:400;">' + list.total + ' 条 · 超过 ' + ((overview && overview.retention_days) || 60) + ' 天自动清理</span></div>' +
+            tr('<div class="fh-pane"><div class="fh-pane-head"><select id="fh-reader-view"><option value="all">全部</option><option value="unread">未读</option><option value="recommended">推荐</option></select>') +
+            '<span class="fh-note" style="font-weight:400;">' + list.total + tr(' 条 · 超过 ') + ((overview && overview.retention_days) || 60) + tr(' 天自动清理</span>') +
+            (list.unread_low ? tr('<button class="fh-btn" id="fh-read-low" style="margin-left:auto;font-weight:400;" title="把') + (reader.feed ? tr('这个订阅源') : tr('全部订阅源')) + tr('里未读的低分条目一次标为已读（只是已读，不算“不感兴趣”，不影响画像）">低分全部已读（') + list.unread_low + '）</button>' : '') + '</div>' +
             (list.items.length ? list.items.map((it) => '<div class="fh-row' + (it.unread ? ' unread' : '') + (reader.item === it.id ? ' active' : '') + '" data-row="' + it.id + '">' +
                 '<div class="t">' + esc(it.title) + '</div><div class="fh-meta">' + tags(it) + esc(it.journal || it.feed) + (it.published ? ' · ' + esc(it.published) : '') +
-                (it.score != null ? ' · ' + it.score + ' 分' : '') + '</div></div>').join('') : '<div class="fh-empty" style="padding:10px;">没有条目。</div>') +
-            (list.total > list.page * 50 ? '<div style="padding:8px 10px;"><button class="fh-btn" id="fh-more">下一页</button></div>' : '') +
-            '</div><div class="fh-pane" id="fh-detail"><div class="fh-empty" style="padding:20px;">选择左侧的一篇文章查看原文内容与评分。</div></div></div>';
+                (it.score != null ? ' · ' + it.score + tr(' 分') : '') + '</div></div>').join('') : tr('<div class="fh-empty" style="padding:10px;">没有条目。</div>')) +
+            (list.total > list.page * 50 ? tr('<div style="padding:8px 10px;"><button class="fh-btn" id="fh-more">下一页</button></div>') : '') +
+            tr('</div><div class="fh-pane" id="fh-detail"><div class="fh-empty" style="padding:20px;">选择左侧的一篇文章查看原文内容与评分。</div></div></div>');
         panels.reader.innerHTML = h;
         document.getElementById('fh-reader-view').value = reader.view;
         if (reader.item) { loadDetail(reader.item); }
@@ -456,30 +457,43 @@
             const sig = it.signals || {};
             const bar = (label, v, hint) => v == null ? '' : '<div class="fh-signal" title="' + esc(hint || '') + '"><span>' + label + '</span><div class="track"><div style="width:' +
                 Math.round(Math.max(0, Math.min(1, v)) * 100) + '%"></div></div><span>' + Math.round(v * 100) + '</span></div>';
-            pane.innerHTML = '<div class="fh-detail"><h2>' + esc(it.title) + '</h2><div class="fh-meta">' + tags(it) + esc(it.authors.join(', ')) + (it.author_count > 6 ? ' 等 ' + it.author_count + ' 人' : '') +
+            pane.innerHTML = '<div class="fh-detail"><h2>' + esc(it.title) + '</h2><div class="fh-meta">' + tags(it) + esc(it.authors.join(', ')) + (it.author_count > 6 ? tr(' 等 ') + it.author_count + tr(' 人') : '') +
                 '<br>' + esc(it.journal || it.feed) + (it.published ? ' · ' + esc(it.published) : '') +
-                (safeUrl(it.link, ['http://', 'https://']) ? ' · <a href="' + safeUrl(it.link, ['http://', 'https://']) + '" target="_blank" rel="noopener">原文链接</a>' : '') +
+                (safeUrl(it.link, ['http://', 'https://']) ? ' · <a href="' + safeUrl(it.link, ['http://', 'https://']) + tr('" target="_blank" rel="noopener">原文链接</a>') : '') +
                 (it.doi_url ? ' · <a href="' + safeUrl(it.doi_url, ['https://doi.org/']) + '" target="_blank" rel="noopener">DOI</a>' : '') + '</div>' +
                 '<div style="margin:10px 0;">' + actions(it) + '</div>' +
-                (it.score != null ? '<div class="fh-box"><h4>为什么是 ' + it.score + ' 分' + (it.facet ? ' · 最接近的方向：' + esc(it.facet) : '') + '</h4>' +
+                (it.score != null ? tr('<div class="fh-box"><h4>为什么是 ') + it.score + tr(' 分') + (it.facet ? tr(' · 最接近的方向：') + esc(it.facet) : '') + '</h4>' +
                     (it.reason ? '<div class="fh-reason" style="margin-bottom:6px;">' + esc(it.reason) + (it.llm_score != null ? '（LLM ' + it.llm_score + '/10）' : '') + '</div>' : '') +
-                    bar('与库相近', sig.dense, '和你库里最接近的兴趣方向有多近（按库内文献彼此接近程度换算的百分位）') +
-                    bar('关键词', sig.lexical, '与库内 AI 总结的 BM25 关键词匹配') +
-                    bar('作者', sig.author, sig.author_match ? ('作者 ' + sig.author_match + ' 在你库中出现 ' + sig.author_count + ' 次') : '作者在库中出现的次数') +
-                    (sig.feedback ? bar('你的反馈', (sig.feedback + 1) / 2, '与你点过 👍 / 👎 的文章的相似程度') : '') +
-                    ((it.nearest || []).length ? '<div class="fh-note" style="margin-top:6px;">库内最相近：' + it.nearest.map((n) => (safeUrl(n.zotero_url, ['zotero://']) ?
+                    bar(tr('与库相近'), sig.dense, tr('和你库里最接近的兴趣方向有多近（按库内文献彼此接近程度换算的百分位）')) +
+                    bar(tr('关键词'), sig.lexical, tr('与库内 AI 总结的 BM25 关键词匹配')) +
+                    bar(tr('作者'), sig.author, sig.author_match ? (tr('作者 ') + sig.author_match + tr(' 在你库中出现 ') + sig.author_count + tr(' 次')) : tr('作者在库中出现的次数')) +
+                    (sig.feedback ? bar(tr('你的反馈'), (sig.feedback + 1) / 2, tr('与你点过 👍 / 👎 的文章的相似程度')) : '') +
+                    ((it.nearest || []).length ? tr('<div class="fh-note" style="margin-top:6px;">库内最相近：') + it.nearest.map((n) => (safeUrl(n.zotero_url, ['zotero://']) ?
                         '<a href="' + safeUrl(n.zotero_url, ['zotero://']) + '">' + esc(n.cite) + '</a>' : esc(n.cite)) + ' ' + esc((n.title || '').slice(0, 60))).join('；') + '</div>' : '') + '</div>' : '') +
-                (it.abstract_html && it.abstract_source !== 'rss' ? '<div class="fh-box"><h4>摘要（来自 ' + esc(it.abstract_source) + '）</h4><div class="snippet">' + it.abstract_html + '</div></div>' : '') +
-                '<div class="fh-box"><h4>RSS 原始内容</h4><div class="snippet">' + (it.raw_html || '<span class="fh-note">（RSS 未提供内容）</span>') + '</div></div></div>';
+                (it.abstract_html && it.abstract_source !== 'rss' ? tr('<div class="fh-box"><h4>摘要（来自 ') + esc(it.abstract_source) + '）</h4><div class="snippet">' + it.abstract_html + '</div></div>' : '') +
+                tr('<div class="fh-box"><h4>RSS 原始内容</h4><div class="snippet">') + (it.raw_html || tr('<span class="fh-note">（RSS 未提供内容）</span>')) + '</div></div></div>';
             typeset(pane);
             const row = panels.reader.querySelector('[data-row="' + id + '"]');
             if (row) { panels.reader.querySelectorAll('.fh-row.active').forEach((r) => r.classList.remove('active')); row.classList.add('active'); row.classList.remove('unread'); }
         } catch (e) { pane.innerHTML = '<div class="fh-empty" style="padding:20px;">' + esc(e.message) + '</div>'; }
     }
     function openInReader(id) { reader.item = id; switchTab('reader'); }
-    panels.reader.addEventListener('click', (e) => {
+    panels.reader.addEventListener('click', async (e) => {
         const pick = e.target.closest('[data-feed-pick]');
         if (pick) { reader.feed = pick.dataset.feedPick; reader.page = 1; reader.item = null; renderReader(); return; }
+        if (e.target.id === 'fh-read-low') {
+            e.target.disabled = true;
+            try {
+                const r = await api('/admin-api/feed/read-low', { feed_id: reader.feed || null });
+                showError('');
+                overview = await api('/admin-api/feed/overview');   // 刷新左侧各订阅源的未读数与顶部徽标
+                updateBadges();
+                await renderReader();
+                const note = document.querySelector('#fh-reader-view + .fh-note');
+                if (note) { note.textContent = tr('已把 ') + r.marked + tr(' 条低分条目标为已读'); }
+            } catch (err) { showError(err.message); e.target.disabled = false; }
+            return;
+        }
         const row = e.target.closest('[data-row]');
         if (row) { loadDetail(Number(row.dataset.row)); return; }
         if (e.target.id === 'fh-more') { reader.page += 1; renderReader(); }
@@ -496,12 +510,12 @@
         const feeds = (overview && overview.feeds) || [];
         const opt = (v, l, cur) => '<option value="' + esc(v) + '"' + (String(v) === String(cur) ? ' selected' : '') + '>' + esc(l) + '</option>';
         panels.pool.innerHTML = '<div class="fh-card"><div class="fh-filter"><select id="fh-pool-view">' +
-            [['recommended', '推荐（自动入库 + 待确认）'], ['confirm', '待确认'], ['auto', '自动入库档'], ['ingested', '已入库'], ['low', '低分'], ['dismissed', '不感兴趣'], ['in_library', '库中已有'], ['new', '待评分'], ['all', '全部']]
-                .map(([v, l]) => opt(v, l, pool.view)).join('') + '</select><select id="fh-pool-feed">' + opt('', '全部订阅源', pool.feed) + feeds.map((f) => opt(f.id, f.name, pool.feed)).join('') +
-            '</select><select id="fh-pool-sort">' + opt('score', '按分数', pool.sort) + opt('time', '按时间', pool.sort) + '</select>' +
-            '<input id="fh-pool-q" placeholder="标题关键词" value="' + esc(pool.q) + '"><span class="fh-note">' + list.total + ' 篇</span></div>' +
-            (list.items.length ? list.items.map(itemRow).join('') : '<div class="fh-empty">没有符合条件的文章。</div>') +
-            (list.total > list.page * 50 ? '<div style="margin-top:8px;"><button class="fh-btn" id="fh-pool-more">下一页</button></div>' : '') + '</div>';
+            [['recommended', tr('推荐（自动入库 + 待确认）')], ['confirm', tr('待确认')], ['auto', tr('自动入库档')], ['ingested', tr('已入库')], ['low', tr('低分')], ['dismissed', tr('不感兴趣')], ['in_library', tr('库中已有')], ['new', tr('待评分')], ['all', tr('全部')]]
+                .map(([v, l]) => opt(v, l, pool.view)).join('') + '</select><select id="fh-pool-feed">' + opt('', tr('全部订阅源'), pool.feed) + feeds.map((f) => opt(f.id, f.name, pool.feed)).join('') +
+            '</select><select id="fh-pool-sort">' + opt('score', tr('按分数'), pool.sort) + opt('time', tr('按时间'), pool.sort) + '</select>' +
+            tr('<input id="fh-pool-q" placeholder="标题关键词" value="') + esc(pool.q) + '"><span class="fh-note">' + list.total + tr(' 篇</span></div>') +
+            (list.items.length ? list.items.map(itemRow).join('') : tr('<div class="fh-empty">没有符合条件的文章。</div>')) +
+            (list.total > list.page * 50 ? tr('<div style="margin-top:8px;"><button class="fh-btn" id="fh-pool-more">下一页</button></div>') : '') + '</div>';
         typeset(panels.pool);
     }
     panels.pool.addEventListener('change', (e) => {
@@ -517,12 +531,12 @@
     async function renderReports() {
         let d;
         try { d = await api('/admin-api/feed/reports'); } catch (e) { showError(e.message); return; }
-        panels.reports.innerHTML = '<div class="fh-grid two"><div id="fh-report-view"><div class="fh-card fh-empty">选择右侧的一份周报查看。</div></div>' +
-            '<div class="fh-card"><div class="fh-card-head"><h3>周报存档</h3><button class="fh-btn" id="fh-gen">生成本周（截至目前）</button></div>' +
+        panels.reports.innerHTML = tr('<div class="fh-grid two"><div id="fh-report-view"><div class="fh-card fh-empty">选择右侧的一份周报查看。</div></div>') +
+            tr('<div class="fh-card"><div class="fh-card-head"><h3>周报存档</h3><button class="fh-btn" id="fh-gen">生成本周（截至目前）</button></div>') +
             (d.reports.length ? d.reports.map((r) => '<div class="fh-item" style="grid-template-columns:1fr auto;"><div><a href="#" data-load-report="' + esc(r.week) + '">' +
                 (r.unread ? '📬 ' : '') + esc(r.week) + (r.range ? '（' + esc(r.range[0]) + ' – ' + esc(r.range[1]) + '）' : '') + '</a>' +
-                '<div class="fh-meta">新文章 ' + (r.stats.items || 0) + ' · 自动入库 ' + (r.stats.auto || 0) + ' · 待确认 ' + (r.stats.confirm || 0) + '</div></div><span class="fh-note">' + esc(r.generated_at) + '</span></div>').join('')
-                : '<div class="fh-empty">还没有周报。每周一后台会自动生成上一周的周报。</div>') + '</div></div>';
+                tr('<div class="fh-meta">新文章 ') + (r.stats.items || 0) + tr(' · 自动入库 ') + (r.stats.auto || 0) + tr(' · 待确认 ') + (r.stats.confirm || 0) + '</div></div><span class="fh-note">' + esc(r.generated_at) + '</span></div>').join('')
+                : tr('<div class="fh-empty">还没有周报。每周一后台会自动生成上一周的周报。</div>')) + '</div></div>';
         if (d.reports.length) { loadReport(d.reports[0].week); }
     }
     async function loadReport(week) {
@@ -535,7 +549,7 @@
         const link = e.target.closest('[data-load-report]');
         if (link) { e.preventDefault(); loadReport(link.dataset.loadReport); return; }
         if (e.target.id === 'fh-gen') {
-            e.target.disabled = true; e.target.textContent = '生成中…';
+            e.target.disabled = true; e.target.textContent = tr('生成中…');
             try { await api('/admin-api/feed/report/generate', {}); await renderReports(); refresh(); } catch (err) { showError(err.message); }
         }
     });
@@ -552,63 +566,63 @@
     }
     const groupById = (id) => prof.facets.find((g) => g.id === id);
     function markClass(r) { return r.status === 'suggested' ? 'sugg' : (r.by === 'user' ? 'user' : (r.edited ? 'edited' : '')); }
-    function markTitle(r) { return r.status === 'suggested' ? 'AI 建议，采纳后才生效' : (r.by === 'user' ? '你写的' : (r.edited ? 'AI 提炼，你改过' : 'AI 提炼')); }
+    function markTitle(r) { return r.status === 'suggested' ? tr('AI 建议，采纳后才生效') : (r.by === 'user' ? tr('你写的') : (r.edited ? tr('AI 提炼，你改过') : tr('AI 提炼'))); }
     function lineHtml(r) {
         if (r.status === 'suggested') {
             const why = r.resurfaced
-                ? (r.resurfaced.from === 'ignored' ? '你之前忽略过这条' : '你之前删过这条') + ' · 之后有 ' + r.resurfaced.count + ' 篇新文献涉及这一点' +
-                  (r.resurfaced.support.length ? ' <details><summary>看看是哪几篇</summary><ul>' + r.resurfaced.support.map((t) => '<li>' + esc(t.slice(0, 110)) + '</li>').join('') + '</ul></details>' : '')
-                : 'AI 建议 · 根据这组新进的文献';
+                ? (r.resurfaced.from === 'ignored' ? tr('你之前忽略过这条') : tr('你之前删过这条')) + tr(' · 之后有 ') + r.resurfaced.count + tr(' 篇新文献涉及这一点') +
+                  (r.resurfaced.support.length ? tr(' <details><summary>看看是哪几篇</summary><ul>') + r.resurfaced.support.map((t) => '<li>' + esc(t.slice(0, 110)) + '</li>').join('') + '</ul></details>' : '')
+                : tr('AI 建议 · 根据这组新进的文献');
             return '<div class="fh-ln sugg" data-row data-id="' + esc(r.id) + '" data-status="suggested"><span class="fh-mark sugg" title="' + markTitle(r) + '"></span>' +
                 '<div><div class="fh-ln-text">' + esc(r.text) + '</div><div class="fh-ln-why">' + why + '</div></div>' +
-                '<span class="fh-ln-act show"><button class="fh-ib ok" data-r="accept">采纳</button><button class="fh-ib" data-r="ignore" title="这次不要；等新文献更多时可能再提">忽略</button>' +
-                (r.resurfaced ? '<button class="fh-ib" data-r="block" title="永久不再提示">不再提示</button>' : '') + '</span></div>';
+                tr('<span class="fh-ln-act show"><button class="fh-ib ok" data-r="accept">采纳</button><button class="fh-ib" data-r="ignore" title="这次不要；等新文献更多时可能再提">忽略</button>') +
+                (r.resurfaced ? tr('<button class="fh-ib" data-r="block" title="永久不再提示">不再提示</button>') : '') + '</span></div>';
         }
         return '<div class="fh-ln" data-row data-id="' + esc(r.id) + '" data-by="' + esc(r.by) + '"><span class="fh-mark ' + markClass(r) + '" title="' + markTitle(r) + '"></span>' +
             '<div class="fh-ln-text" contenteditable="true" spellcheck="false" data-orig="' + esc(r.text) + '">' + esc(r.text) + '</div>' +
-            '<span class="fh-ln-act"><button class="fh-ib" data-r="delete" tabindex="-1" title="' + (r.by === 'user' ? '删除这一行' : '删除（进回收站；以后有新证据时可能再问你）') + '">✕</button>' +
-            (r.by === 'user' ? '' : '<button class="fh-ib" data-r="block" tabindex="-1" title="删除，并且永久不再提示">⊘</button>') + '</span></div>';
+            '<span class="fh-ln-act"><button class="fh-ib" data-r="delete" tabindex="-1" title="' + (r.by === 'user' ? tr('删除这一行') : tr('删除（进回收站；以后有新证据时可能再问你）')) + '">✕</button>' +
+            (r.by === 'user' ? '' : tr('<button class="fh-ib" data-r="block" tabindex="-1" title="删除，并且永久不再提示">⊘</button>')) + '</span></div>';
     }
     function ghostHtml() {
-        return '<div class="fh-ln ghost" data-row data-ghost><span class="fh-mark ghost"></span><div class="fh-ln-text" contenteditable="true" spellcheck="false" data-orig="" data-placeholder="写一行…"></div><span></span></div>';
+        return tr('<div class="fh-ln ghost" data-row data-ghost><span class="fh-mark ghost"></span><div class="fh-ln-text" contenteditable="true" spellcheck="false" data-orig="" data-placeholder="写一行…"></div><span></span></div>');
     }
     function keywordsHtml(g) {
         const kws = g.rows.filter((r) => r.kind === 'keyword');
-        return '<div class="fh-ln" data-kwrow><span class="fh-mark" style="opacity:0"></span><div class="fh-kw"><span class="fh-kw-label">关键词</span>' +
+        return tr('<div class="fh-ln" data-kwrow><span class="fh-mark" style="opacity:0"></span><div class="fh-kw"><span class="fh-kw-label">关键词</span>') +
             kws.map((k) => k.status === 'suggested'
-                ? '<span class="fh-kw-chip sugg" data-id="' + esc(k.id) + '" data-r="accept" title="AI 建议：点一下采纳">' + esc(k.text) + '<button data-r="ignore" title="忽略">✕</button></span>'
-                : '<span class="fh-kw-chip' + (k.by === 'user' ? ' user' : '') + '" data-id="' + esc(k.id) + '" title="' + markTitle(k) + '">' + esc(k.text) + '<button data-r="delete" title="删除">✕</button></span>').join('') +
-            '<input class="fh-kw-input" data-kw-add placeholder="+ 关键词" spellcheck="false"></div><span></span></div>';
+                ? '<span class="fh-kw-chip sugg" data-id="' + esc(k.id) + tr('" data-r="accept" title="AI 建议：点一下采纳">') + esc(k.text) + tr('<button data-r="ignore" title="忽略">✕</button></span>')
+                : '<span class="fh-kw-chip' + (k.by === 'user' ? ' user' : '') + '" data-id="' + esc(k.id) + '" title="' + markTitle(k) + '">' + esc(k.text) + tr('<button data-r="delete" title="删除">✕</button></span>')).join('') +
+            tr('<input class="fh-kw-input" data-kw-add placeholder="+ 关键词" spellcheck="false"></div><span></span></div>');
     }
     function binHtml(g) {
         if (!g.bin.length) { return ''; }
-        return '<details data-bin><summary>回收站 ' + g.bin.length + '</summary>' + g.bin.map((r) =>
-            '<div class="fh-bin-row" data-id="' + esc(r.id) + '"><div><div class="t">' + (r.kind === 'keyword' ? '关键词：' : '') + esc(r.text) + '</div><div class="m">' +
-            (r.status === 'blocked' ? '不再提示' : (r.status === 'ignored' ? '忽略的建议' : '删除') + '于 ' + esc(r.changed_at) +
-                (r.kind === 'claim' && r.eligible_at ? ' · ' + esc(r.eligible_at) + ' 之后如果有新文献支持，会再问你一次' : '')) + '</div></div>' +
-            '<span><button class="fh-ib ok" data-r="restore">恢复</button>' + (r.status === 'blocked' ? '' : '<button class="fh-ib" data-r="block" title="永久不再提示">不再提示</button>') + '</span></div>').join('') + '</details>';
+        return tr('<details data-bin><summary>回收站 ') + g.bin.length + '</summary>' + g.bin.map((r) =>
+            '<div class="fh-bin-row" data-id="' + esc(r.id) + '"><div><div class="t">' + (r.kind === 'keyword' ? tr('关键词：') : '') + esc(r.text) + '</div><div class="m">' +
+            (r.status === 'blocked' ? tr('不再提示') : (r.status === 'ignored' ? tr('忽略的建议') : tr('删除')) + tr('于 ') + esc(r.changed_at) +
+                (r.kind === 'claim' && r.eligible_at ? ' · ' + esc(r.eligible_at) + tr(' 之后如果有新文献支持，会再问你一次') : '')) + '</div></div>' +
+            tr('<span><button class="fh-ib ok" data-r="restore">恢复</button>') + (r.status === 'blocked' ? '' : tr('<button class="fh-ib" data-r="block" title="永久不再提示">不再提示</button>')) + '</span></div>').join('') + '</details>';
     }
     function footHtml(g) {
-        const rep = g.representative.length ? '<details><summary>代表性文献</summary><ol>' + g.representative.map((t) => '<li>' + esc(t.slice(0, 120)) + '</li>').join('') + '</ol></details>' : '';
+        const rep = g.representative.length ? tr('<details><summary>代表性文献</summary><ol>') + g.representative.map((t) => '<li>' + esc(t.slice(0, 120)) + '</li>').join('') + '</ol></details>' : '';
         return rep + binHtml(g);
     }
-    const WEIGHTS = [[0, '不推荐'], [0.5, '权重 低'], [1, '权重 标准'], [1.5, '权重 高'], [2, '权重 最高']];
+    const WEIGHTS = [[0, tr('不推荐')], [0.5, tr('权重 低')], [1, tr('权重 标准')], [1.5, tr('权重 高')], [2, tr('权重 最高')]];
     function sheetHtml(g) {
         const others = prof.facets.filter((o) => o.id !== g.id);
-        const weights = WEIGHTS.some(([w]) => w === Number(g.weight)) ? WEIGHTS : WEIGHTS.concat([[Number(g.weight), '权重 ' + g.weight]]);
-        const pills = (g.small ? '<span class="fh-pill warn">只剩 ' + g.papers + ' 篇</span>' : '') +
-            (g.created_by === 'ai' && !g.touched && g.created_at > (prof.first_grouped || '9') ? '<span class="fh-pill new" title="AI 从未归组文献新建的组">AI 新建 ' + esc(g.created_at.slice(5)) + '</span>' : '');
+        const weights = WEIGHTS.some(([w]) => w === Number(g.weight)) ? WEIGHTS : WEIGHTS.concat([[Number(g.weight), tr('权重 ') + g.weight]]);
+        const pills = (g.small ? tr('<span class="fh-pill warn">只剩 ') + g.papers + tr(' 篇</span>') : '') +
+            (g.created_by === 'ai' && !g.touched && g.created_at > (prof.first_grouped || '9') ? tr('<span class="fh-pill new" title="AI 从未归组文献新建的组">AI 新建 ') + esc(g.created_at.slice(5)) + '</span>' : '');
         const claims = g.rows.filter((r) => r.kind === 'claim');
         return '<div class="fh-sheet' + (g.enabled ? '' : ' off') + '" data-group="' + esc(g.id) + '">' +
-            '<div class="fh-sheet-head"><label class="fh-switch" title="' + (g.enabled ? '启用中：按这组推荐' : '已停用：不按这组推荐（分组保留）') + '"><input type="checkbox" data-g="enabled"' + (g.enabled ? ' checked' : '') + '><span></span></label>' +
+            '<div class="fh-sheet-head"><label class="fh-switch" title="' + (g.enabled ? tr('启用中：按这组推荐') : tr('已停用：不按这组推荐（分组保留）')) + '"><input type="checkbox" data-g="enabled"' + (g.enabled ? ' checked' : '') + '><span></span></label>' +
             '<span class="fh-num">' + esc(g.number.padStart(2, '0')) + '</span>' +
-            '<div class="fh-gname" contenteditable="true" spellcheck="false" data-g="name" data-orig="' + esc(g.name) + '" data-placeholder="未命名分组" title="' + (g.name_by === 'user' ? '你起的名字' : 'AI 起的名字，改过之后 AI 不再动它') + '">' + esc(g.name) + '</div>' +
-            '<span class="fh-gmeta">' + pills + g.papers + ' 篇</span>' +
-            '<select class="fh-weight" data-g="weight" title="这组在推荐时的权重">' + weights.map(([w, label]) => '<option value="' + w + '"' + (Number(g.weight) === w ? ' selected' : '') + '>' + label + '</option>').join('') + '</select>' +
-            '<details class="fh-menu"><summary title="合并 / 删除">⋯</summary><div class="fh-menu-pop">' +
-            (others.length ? '<div class="row">并入<select data-g="merge-target">' + others.map((o) => '<option value="' + esc(o.id) + '">' + esc(o.number.padStart(2, '0') + ' ' + (o.name || '未命名分组')) + '</option>').join('') + '</select><button class="fh-btn" data-g="merge">合并</button></div>' +
-                '<div class="fh-note">这组的文献和所有行（含回收站）并到目标组，目标组保留名称。</div><hr>' : '') +
-            '<button class="fh-btn danger" data-g="delete">删除这组</button><div class="fh-note" style="margin-top:6px;">组内文献会归到最近的组或“未归组”；AI 不会再从这批文献重建这一组，可在页面底部恢复。只是不想按它推荐的话，用左边的开关停用即可。</div>' +
+            '<div class="fh-gname" contenteditable="true" spellcheck="false" data-g="name" data-orig="' + esc(g.name) + tr('" data-placeholder="未命名分组" title="') + (g.name_by === 'user' ? tr('你起的名字') : tr('AI 起的名字，改过之后 AI 不再动它')) + '">' + esc(g.name) + '</div>' +
+            '<span class="fh-gmeta">' + pills + g.papers + tr(' 篇</span>') +
+            tr('<select class="fh-weight" data-g="weight" title="这组在推荐时的权重">') + weights.map(([w, label]) => '<option value="' + w + '"' + (Number(g.weight) === w ? ' selected' : '') + '>' + label + '</option>').join('') + '</select>' +
+            tr('<details class="fh-menu"><summary title="合并 / 删除">⋯</summary><div class="fh-menu-pop">') +
+            (others.length ? tr('<div class="row">并入<select data-g="merge-target">') + others.map((o) => '<option value="' + esc(o.id) + '">' + esc(o.number.padStart(2, '0') + ' ' + (o.name || tr('未命名分组'))) + '</option>').join('') + tr('</select><button class="fh-btn" data-g="merge">合并</button></div>') +
+                tr('<div class="fh-note">这组的文献和所有行（含回收站）并到目标组，目标组保留名称。</div><hr>') : '') +
+            tr('<button class="fh-btn danger" data-g="delete">删除这组</button><div class="fh-note" style="margin-top:6px;">组内文献会归到最近的组或“未归组”；AI 不会再从这批文献重建这一组，可在页面底部恢复。只是不想按它推荐的话，用左边的开关停用即可。</div>') +
             '</div></details></div>' +
             '<div class="fh-lines">' + claims.map(lineHtml).join('') + ghostHtml() + keywordsHtml(g) + '</div>' +
             '<div class="fh-sheet-foot">' + footHtml(g) + '</div></div>';
@@ -640,32 +654,32 @@
         prof.first_grouped = (p.grouped_at || '').slice(0, 10);
         const suggestions = p.suggestions.length ? '<div class="fh-suggest">' + p.suggestions.map((s) =>
             '<div class="s" data-key="' + esc(s.key) + '"><div>' + (s.type === 'merge'
-                ? '建议合并：<strong>' + s.names.map(esc).join('</strong> 和 <strong>') + '</strong>'
-                : '建议拆分：<strong>' + esc(s.names[0]) + '</strong> → ' + s.sizes.join(' 篇 + ') + ' 篇') +
-            '<div class="why">' + esc(s.reason) + '</div></div><span><button class="fh-btn" data-s="apply">' + (s.type === 'merge' ? '合并' : '拆分') + '</button> <button class="fh-ib" data-s="dismiss">不用</button></span></div>').join('') + '</div>' : '';
-        const deleted = p.deleted_groups.length ? '<details class="fh-card" style="margin-top:12px;padding:10px 14px;"><summary class="fh-note" style="cursor:pointer;">已删除的分组 ' + p.deleted_groups.length + '</summary>' +
-            p.deleted_groups.map((g) => '<div class="fh-bin-row" data-deleted-group="' + esc(g.id) + '"><div><div class="t">' + esc(g.name) + '</div><div class="m">' + g.papers + ' 篇 · 删除于 ' + esc(g.deleted_at) + '</div></div><span><button class="fh-ib ok" data-dg="restore">恢复</button></span></div>').join('') + '</details>' : '';
+                ? tr('建议合并：<strong>') + s.names.map(esc).join(tr('</strong> 和 <strong>')) + '</strong>'
+                : tr('建议拆分：<strong>') + esc(s.names[0]) + '</strong> → ' + s.sizes.join(tr(' 篇 + ')) + tr(' 篇')) +
+            '<div class="why">' + esc(s.reason) + '</div></div><span><button class="fh-btn" data-s="apply">' + (s.type === 'merge' ? tr('合并') : tr('拆分')) + tr('</button> <button class="fh-ib" data-s="dismiss">不用</button></span></div>')).join('') + '</div>' : '';
+        const deleted = p.deleted_groups.length ? tr('<details class="fh-card" style="margin-top:12px;padding:10px 14px;"><summary class="fh-note" style="cursor:pointer;">已删除的分组 ') + p.deleted_groups.length + '</summary>' +
+            p.deleted_groups.map((g) => '<div class="fh-bin-row" data-deleted-group="' + esc(g.id) + '"><div><div class="t">' + esc(g.name) + '</div><div class="m">' + g.papers + tr(' 篇 · 删除于 ') + esc(g.deleted_at) + tr('</div></div><span><button class="fh-ib ok" data-dg="restore">恢复</button></span></div>')).join('') + '</details>' : '';
         const sheets = p.facets.length ? '<div class="fh-sheets">' + p.facets.map(sheetHtml).join('') + '</div>'
-            : '<div class="fh-card fh-empty">还没有分组。点右上角“分组并提炼说明”：首次会为全库文献计算向量（约 1 分钟）并自动分组，然后由 AI 为每组起名、写几条说明。</div>';
+            : tr('<div class="fh-card fh-empty">还没有分组。点右上角“分组并提炼说明”：首次会为全库文献计算向量（约 1 分钟）并自动分组，然后由 AI 为每组起名、写几条说明。</div>');
         panels.profile.innerHTML = '<div class="fh-grid two"><div>' +
-            '<div class="fh-card-head" style="margin:0 2px 4px 2px;"><h3 style="font-size:15px;">兴趣方向 <span class="fh-note" style="font-weight:400;">' + p.facets.length + ' 组' +
-            (p.library_size ? ' · 库内 ' + p.library_size + ' 篇' : '') + (p.unassigned ? ' · <span title="离所有组都远的文献；攒够了、彼此够紧密时 AI 会新建一组；评分时照样参与比较">未归组 ' + p.unassigned + ' 篇</span>' : '') +
-            (p.grouped_at ? ' · ' + esc(p.grouped_at) + ' 分组' : '') + '</span></h3><span>' +
-            '<button class="fh-btn" id="fh-p-describe" title="为新组提炼说明；新进了 5 篇以上文献的组，AI 只看新文献提出新增建议">' + (p.facets.length ? '看看新文献' : '分组并提炼说明') + '</button> ' +
-            (p.facets.length ? '<button class="fh-btn" id="fh-p-regroup" title="只重新划分你没动过的组；你改过、停用过、调过权重的组原样保留">整理分组</button>' : '') + '</span></div>' +
-            '<div class="fh-legend"><span><i style="background:#cbd5e1"></i>AI 提炼</span><span><i style="background:#2a78d6"></i>你写的</span><span><i style="box-shadow:inset 0 0 0 1.5px #2a78d6"></i>AI 提炼、你改过</span><span><i style="box-shadow:inset 0 0 0 1.5px #c58a00"></i>AI 建议（采纳后生效）</span>' +
-            '<span>· 点进任意一行直接改；回车在光标处断行；空行按退格删除</span></div>' +
+            tr('<div class="fh-card-head" style="margin:0 2px 4px 2px;"><h3 style="font-size:15px;">兴趣方向 <span class="fh-note" style="font-weight:400;">') + p.facets.length + tr(' 组') +
+            (p.library_size ? tr(' · 库内 ') + p.library_size + tr(' 篇') : '') + (p.unassigned ? tr(' · <span title="离所有组都远的文献；攒够了、彼此够紧密时 AI 会新建一组；评分时照样参与比较">未归组 ') + p.unassigned + tr(' 篇</span>') : '') +
+            (p.grouped_at ? ' · ' + esc(p.grouped_at) + tr(' 分组') : '') + '</span></h3><span>' +
+            tr('<button class="fh-btn" id="fh-p-describe" title="为新组提炼说明；新进了 5 篇以上文献的组，AI 只看新文献提出新增建议">') + (p.facets.length ? tr('看看新文献') : tr('分组并提炼说明')) + '</button> ' +
+            (p.facets.length ? tr('<button class="fh-btn" id="fh-p-regroup" title="只重新划分你没动过的组；你改过、停用过、调过权重的组原样保留">整理分组</button>') : '') + '</span></div>' +
+            tr('<div class="fh-legend"><span><i style="background:#cbd5e1"></i>AI 提炼</span><span><i style="background:#2a78d6"></i>你写的</span><span><i style="box-shadow:inset 0 0 0 1.5px #2a78d6"></i>AI 提炼、你改过</span><span><i style="box-shadow:inset 0 0 0 1.5px #c58a00"></i>AI 建议（采纳后生效）</span>') +
+            tr('<span>· 点进任意一行直接改；回车在光标处断行；空行按退格删除</span></div>') +
             suggestions + sheets + deleted + '</div>' +
-            '<div><div class="fh-card"><div class="fh-card-head"><h3>补充画像</h3><span class="fh-note">全部是你的部分，AI 不会修改</span></div>' +
-            '<div class="fh-section-title">必看作者（每行一个，例如 Sean N. Raymond）</div><textarea class="fh-textarea" id="fh-p-authors" rows="5">' + esc(p.must_follow_authors.join('\n')) + '</textarea>' +
-            '<div class="fh-section-title">不感兴趣的方向（每行一个）</div><textarea class="fh-textarea" id="fh-p-avoid" rows="5">' + esc(p.avoid_topics.join('\n')) + '</textarea>' +
-            '<div class="fh-section-title">补充说明</div><textarea class="fh-textarea" id="fh-p-notes" rows="4" placeholder="例如：更关注实验与观测约束，对纯数值方法改进兴趣不大">' + esc(p.notes) + '</textarea>' +
-            '<div class="fh-savebar"><button class="fh-btn primary" id="fh-p-save">保存</button><span class="fh-note" id="fh-p-msg">分组里的修改随改随存；这里的内容点保存。</span></div></div>' +
-            '<div class="fh-card" style="margin-top:14px;"><div class="fh-card-head"><h3>规则</h3></div><div class="fh-note" style="line-height:1.7;">' +
-            '· 已有的组固定不动，新进的文献离哪组足够近就归进哪组；离所有组都远的先放“未归组”，攒够了 AI 才新建一组。<br>' +
-            '· 删组、合并、拆分只有你能做；AI 只会提建议。<br>' +
-            '· 每组的说明 AI 只能提议新增，删和改只有你能做。你删掉的内容不会写进给 AI 的提示词，由程序把关、不让它再出现。<br>' +
-            '· 删掉的行在回收站可随时恢复；普通删除 60 天后，如果新进的文献明显支持这一点，会原样拿出来再问你一次（再忽略则等待时间翻倍）；“不再提示”则永久屏蔽。</div></div></div></div>';
+            tr('<div><div class="fh-card"><div class="fh-card-head"><h3>补充画像</h3><span class="fh-note">全部是你的部分，AI 不会修改</span></div>') +
+            tr('<div class="fh-section-title">必看作者（每行一个，例如 Sean N. Raymond）</div><textarea class="fh-textarea" id="fh-p-authors" rows="5">') + esc(p.must_follow_authors.join('\n')) + '</textarea>' +
+            tr('<div class="fh-section-title">不感兴趣的方向（每行一个）</div><textarea class="fh-textarea" id="fh-p-avoid" rows="5">') + esc(p.avoid_topics.join('\n')) + '</textarea>' +
+            tr('<div class="fh-section-title">补充说明</div><textarea class="fh-textarea" id="fh-p-notes" rows="4" placeholder="例如：更关注实验与观测约束，对纯数值方法改进兴趣不大">') + esc(p.notes) + '</textarea>' +
+            tr('<div class="fh-savebar"><button class="fh-btn primary" id="fh-p-save">保存</button><span class="fh-note" id="fh-p-msg">分组里的修改随改随存；这里的内容点保存。</span></div></div>') +
+            tr('<div class="fh-card" style="margin-top:14px;"><div class="fh-card-head"><h3>规则</h3></div><div class="fh-note" style="line-height:1.7;">') +
+            tr('· 已有的组固定不动，新进的文献离哪组足够近就归进哪组；离所有组都远的先放“未归组”，攒够了 AI 才新建一组。<br>') +
+            tr('· 删组、合并、拆分只有你能做；AI 只会提建议。<br>') +
+            tr('· 每组的说明 AI 只能提议新增，删和改只有你能做。你删掉的内容不会写进给 AI 的提示词，由程序把关、不让它再出现。<br>') +
+            tr('· 删掉的行在回收站可随时恢复；普通删除 60 天后，如果新进的文献明显支持这一点，会原样拿出来再问你一次（再忽略则等待时间翻倍）；“不再提示”则永久屏蔽。</div></div></div></div>');
         syncDescribeState(true);
     }
 
@@ -678,7 +692,7 @@
         if (st.running) {
             btns.forEach((b) => { b.disabled = true; });
             const main = document.getElementById(st.regroup ? 'fh-p-regroup' : 'fh-p-describe') || btns[0];
-            if (main) { main.textContent = st.regroup ? '整理中…' : (prof && prof.facets.length ? 'AI 正在看…' : '分组并提炼中…（首次约 2-3 分钟）'); }
+            if (main) { main.textContent = st.regroup ? tr('整理中…') : (prof && prof.facets.length ? tr('AI 正在看…') : tr('分组并提炼中…（首次约 2-3 分钟）')); }
             clearTimeout(describePoll);
             describePoll = setTimeout(() => syncDescribeState(false), 3000);
             return;
@@ -742,7 +756,7 @@
             facetOp(groupId, () => ({ op: 'delete', claim: row.dataset.id })).then((r) => refreshFoot(r.group));
             return;
         }
-        if (row.dataset.by === 'ai') { const m = row.querySelector('.fh-mark'); m.className = 'fh-mark edited'; m.title = 'AI 提炼，你改过'; }
+        if (row.dataset.by === 'ai') { const m = row.querySelector('.fh-mark'); m.className = 'fh-mark edited'; m.title = tr('AI 提炼，你改过'); }
         facetOp(groupId, () => ({ op: 'edit', claim: row.dataset.id, text }));
     }
     panels.profile.addEventListener('keydown', (e) => {
@@ -861,11 +875,11 @@
         const t = e.target;
         if (t.id === 'fh-p-describe' || t.id === 'fh-p-regroup') {
             const regroup = t.id === 'fh-p-regroup';
-            if (regroup && !window.confirm('整理分组：只重新划分你没动过的组（没改过说明、没停用、没调权重）。你动过的组原样保留。继续？')) { return; }
+            if (regroup && !window.confirm(tr('整理分组：只重新划分你没动过的组（没改过说明、没停用、没调权重）。你动过的组原样保留。继续？'))) { return; }
             t.disabled = true;
             try {
                 const st = await api('/admin-api/feed/profile/describe', { regroup });
-                if (st.already_running) { showError('上一次分组 / 提炼还在进行，等它完成即可。'); }
+                if (st.already_running) { showError(tr('上一次分组 / 提炼还在进行，等它完成即可。')); }
                 syncDescribeState(false);
             } catch (err) { showError(err.message); t.disabled = false; }
             return;
@@ -874,7 +888,7 @@
             const lines = (id) => document.getElementById(id).value.split('\n').map((s) => s.trim()).filter(Boolean);
             try {
                 await api('/admin-api/feed/profile', { must_follow_authors: lines('fh-p-authors'), avoid_topics: lines('fh-p-avoid'), notes: document.getElementById('fh-p-notes').value });
-                document.getElementById('fh-p-msg').textContent = '已保存，下次评分时生效。';
+                document.getElementById('fh-p-msg').textContent = tr('已保存，下次评分时生效。');
             } catch (err) { showError(err.message); }
             return;
         }
@@ -887,12 +901,12 @@
         const groupId = sheet.dataset.group;
         if (t.dataset.g === 'delete') {
             const g = groupById(groupId);
-            groupsOp({ op: 'delete', group: groupId }, '删除“' + ((g && g.name) || '这组') + '”？组内文献会归到最近的组或“未归组”，以后可以在页面底部恢复。');
+            groupsOp({ op: 'delete', group: groupId }, tr('删除“') + ((g && g.name) || tr('这组')) + tr('”？组内文献会归到最近的组或“未归组”，以后可以在页面底部恢复。'));
             return;
         }
         if (t.dataset.g === 'merge') {
             const target = sheet.querySelector('[data-g="merge-target"]');
-            groupsOp({ op: 'merge', group: groupId, target: target.value }, '把这组并入“' + target.options[target.selectedIndex].text + '”？');
+            groupsOp({ op: 'merge', group: groupId, target: target.value }, tr('把这组并入“') + target.options[target.selectedIndex].text + '”？');
             return;
         }
         const op = t.dataset.r || (t.closest('[data-r]') && t.closest('[data-r]').dataset.r);
@@ -918,19 +932,19 @@
         try { d = result || await api('/admin-api/settings'); } catch (e) { showError(e.message); return; }
         const missingNames = new Set(d.missing.map((m) => m.name));
         const input = (row) => {
-            if (row.type === 'bool') { return '<label><input type="checkbox" data-set="' + esc(row.name) + '" data-type="bool"' + (row.value === true ? ' checked' : '') + '> 启用</label>'; }
-            if (row.secret) { return '<input class="fh-input" type="password" autocomplete="off" data-set="' + esc(row.name) + '" placeholder="' + (row.is_set ? '已设置：' + esc(row.value) + '（留空则不修改）' : '未设置') + '">'; }
-            return '<input class="fh-input" data-set="' + esc(row.name) + '" value="' + esc(row.value) + '" placeholder="' + (row.default != null ? '默认：' + esc(row.default) : '') + '">';
+            if (row.type === 'bool') { return '<label><input type="checkbox" data-set="' + esc(row.name) + '" data-type="bool"' + (row.value === true ? ' checked' : '') + tr('> 启用</label>'); }
+            if (row.secret) { return '<input class="fh-input" type="password" autocomplete="off" data-set="' + esc(row.name) + '" placeholder="' + (row.is_set ? tr('已设置：') + esc(row.value) + tr('（留空则不修改）') : tr('未设置')) + '">'; }
+            return '<input class="fh-input" data-set="' + esc(row.name) + '" value="' + esc(row.value) + '" placeholder="' + (row.default != null ? tr('默认：') + esc(row.default) : '') + '">';
         };
-        panels.settings.innerHTML = '<div class="fh-card">' + (d.missing.length ? '<div class="fh-alert bad">缺少必填配置：' + d.missing.map((m) => esc(m.label)).join('、') + '</div>' : '') +
-            '<div class="fh-note" style="margin-bottom:8px;">保存到用户配置文件 <code>' + esc(d.user_config_path) + '</code>（配置档：' + esc(d.profile) + '）；保存前自动备份，文件权限设为仅本人可读。大多数设置需<strong>重启服务</strong>后生效。</div>' +
+        panels.settings.innerHTML = '<div class="fh-card">' + (d.missing.length ? tr('<div class="fh-alert bad">缺少必填配置：') + d.missing.map((m) => esc(m.label)).join('、') + '</div>' : '') +
+            tr('<div class="fh-note" style="margin-bottom:8px;">保存到用户配置文件 <code>') + esc(d.user_config_path) + tr('</code>（配置档：') + esc(d.profile) + tr('）；保存前自动备份，文件权限设为仅本人可读。大多数设置需<strong>重启服务</strong>后生效。</div>') +
             d.groups.map((g) => '<details class="fh-set-group"' + (g.items.some((r) => missingNames.has(r.name)) || g.id === 'model' || g.id === 'zotero' ? ' open' : '') + '><summary>' + esc(g.title) +
                 ' <span class="fh-note">(' + g.items.length + ')</span></summary>' + g.items.map((r) => '<div class="fh-set-row' + (missingNames.has(r.name) ? ' missing' : '') + '">' +
                     '<div><div class="lbl">' + esc(r.label) + (r.required ? '<span class="req">*</span>' : '') + '</div><div class="name">' + esc(r.name) + '</div>' +
                     (r.description && r.description !== r.label ? '<div class="desc">' + esc(r.description) + '</div>' : '') + '</div>' +
-                    '<div>' + input(r) + (r.shadowed ? '<div class="shadow">⚠ 当前值来自' + esc(r.source_label) + '，优先级高于用户配置文件：在这里保存不会生效</div>' : '') + '</div>' +
-                    '<div class="src">来源：' + esc(r.source_label) + (r.secret ? '' : '') + (r.source === 'user' ? '<br><a href="#" data-clear="' + esc(r.name) + '">恢复默认</a>' : '') + '</div></div>').join('') + '</details>').join('') +
-            '<div class="fh-savebar"><button class="fh-btn primary" id="fh-set-save">保存设置</button><span class="fh-note" id="fh-set-msg"></span></div></div>';
+                    '<div>' + input(r) + (r.shadowed ? tr('<div class="shadow">⚠ 当前值来自') + esc(r.source_label) + tr('，优先级高于用户配置文件：在这里保存不会生效</div>') : '') + '</div>' +
+                    tr('<div class="src">来源：') + esc(r.source_label) + (r.secret ? '' : '') + (r.source === 'user' ? '<br><a href="#" data-clear="' + esc(r.name) + tr('">恢复默认</a>') : '') + '</div></div>').join('') + '</details>').join('') +
+            tr('<div class="fh-savebar"><button class="fh-btn primary" id="fh-set-save">保存设置</button><span class="fh-note" id="fh-set-msg"></span></div></div>');
     }
     panels.settings.addEventListener('click', async (e) => {
         const clear = e.target.closest('[data-clear]');
@@ -947,7 +961,7 @@
         try {
             const d = await api('/admin-api/settings', { changes });
             await renderSettings(d);
-            document.getElementById('fh-set-msg').textContent = d.applied.length ? ('已保存 ' + d.applied.length + ' 项，重启服务后生效。') : '没有需要保存的修改。';
+            document.getElementById('fh-set-msg').textContent = d.applied.length ? (tr('已保存 ') + d.applied.length + tr(' 项，重启服务后生效。')) : tr('没有需要保存的修改。');
         } catch (err) {
             showError(err.message + (err.data && err.data.errors ? '：' + Object.entries(err.data.errors).map(([k, v]) => k + ' ' + v).join('；') : ''));
         }
@@ -966,9 +980,9 @@
     function updateBadges() {
         const unread = overview ? overview.week.unread : 0;
         const ub = document.getElementById('fh-unread-badge'); ub.hidden = !unread; ub.textContent = unread > 99 ? '99+' : unread;
-        const rb = document.getElementById('fh-report-badge'); rb.hidden = !(overview && overview.unread_report); rb.textContent = '新';
+        const rb = document.getElementById('fh-report-badge'); rb.hidden = !(overview && overview.unread_report); rb.textContent = tr('新');
         const st = overview ? overview.status : {};
-        document.getElementById('fh-run-state').innerHTML = st.running ? '<span class="fh-dot run"></span>' + (st.stage ? '正在' + esc(st.stage) + (st.progress ? ' · ' + esc(st.progress) : '') : '正在抓取与评分…') : (st.last_fetch_at ? '上次抓取 ' + esc(st.last_fetch_at) : '');
+        document.getElementById('fh-run-state').innerHTML = st.running ? '<span class="fh-dot run"></span>' + (st.stage ? tr('正在') + esc(st.stage) + (st.progress ? ' · ' + esc(st.progress) : '') : tr('正在抓取与评分…')) : (st.last_fetch_at ? tr('上次抓取 ') + esc(st.last_fetch_at) : '');
     }
     async function refresh() {
         try { overview = await api('/admin-api/feed/overview'); } catch (e) { showError(e.message); return; }
