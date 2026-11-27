@@ -2233,6 +2233,13 @@ def create_storage_admin_app() -> Flask:
         """浏览器（尤其 Safari）会直接请求站点根目录的 /favicon.ico。"""
         return app.send_static_file("favicon.ico")
 
+    @app.get("/apple-touch-icon.png")
+    @app.get("/apple-touch-icon-precomposed.png")
+    def apple_touch_icon():
+        """Safari 起始页“个人收藏”、iOS 主屏的大图标：Safari 常直接请求根目录的这两个地址，不看页面里的声明。
+        图是满版正方形（圆角由系统加）。"""
+        return app.send_static_file("apple-touch-icon.png")
+
     _asset_versions: dict[str, str] = {}
 
     def pb_static(filename: str) -> str:
