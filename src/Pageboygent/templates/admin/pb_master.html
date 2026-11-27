@@ -12,6 +12,7 @@
 {{ super() }}
 {# 浏览器标签图标：ICO（兼容所有浏览器，Safari 不认 SVG 图标）在前，SVG（高清）其次；地址带内容指纹，换图后不会用旧缓存 #}
 <link rel="icon" href="{{ pb_static('favicon.ico') }}" sizes="16x16 32x32 48x48">
+<link rel="icon" type="image/png" sizes="32x32" href="{{ pb_static('favicon-32.png') }}">
 <link rel="icon" type="image/svg+xml" href="{{ pb_static('logo.svg') }}">
 <link rel="apple-touch-icon" href="{{ pb_static('apple-touch-icon.png') }}">
 <script>
